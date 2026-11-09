@@ -30,7 +30,7 @@ jobs:
 
       - name: Extract source
         run: |
-          unzip -q FreeNavigator-source-preview-0.1.0.zip -d source
+          unzip -q FreeNavigator-source-preview-0.2.0.zip -d source
 
       - name: Find project and build APK
         run: |
