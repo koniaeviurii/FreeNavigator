@@ -34,8 +34,7 @@ jobs:
       - name: Save extracted source for inspection
         uses: actions/upload-artifact@v4
         with:
-        name: 
-           FreeNavigator-source-extracted
+        name: FreeNavigator-source-extracted
         path: source/
               if-no-files-found:error 
               retantion-days:3
