@@ -32,6 +32,9 @@ jobs:
         run: |
           unzip -q FreeNavigator-source-preview-0.2.1-fixed.zip -d source
       - name: Save extractet source for inspection
+        uses: acyions/upload-artifact@v4
+        with:
+         name: FreeNavigator-source-extracted
         path: source/if-no-files-found:error retantion-days:3
       - name: Find project and build APK
         run: |
