@@ -30,7 +30,7 @@ jobs:
 
       - name: Extract source
         run: |
-          unzip -q FreeNavigator-source-preview-0.2.2-menu-fixed-1.zip -d source
+          unzip -q FreeNavigator-source-preview-0.2.2-menu-fixed.zip -d source
       - name: Save extracted source for inspection
         uses: actions/upload-artifact@v4
         with:
