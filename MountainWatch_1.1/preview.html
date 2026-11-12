@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Mountain Watch 1.1</title>
+<style>
+:root{color-scheme:dark;--accent:#43baff;--glow:#167fc1;--face:#05090f;--metal:#dce8f2}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#10151d;color:#eaf2fa;font:15px system-ui,Arial;display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px}
+h1{font-size:19px;margin:2px 0} .watch{width:min(88vw,390px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 50% 42%,#172637 0,#080e17 61%,#020407 100%);border:7px solid #4b5968;box-shadow:0 0 0 3px #18212c, inset 0 0 22px #000;position:relative;overflow:hidden}
+svg{width:100%;height:100%;display:block}.date{font-size:12px;letter-spacing:1.2px;fill:#e7f3ff;font-weight:650}.num{font-size:25px;fill:#edf4fb;font-weight:600;text-anchor:middle;dominant-baseline:middle}.tick{stroke:#9aabba;stroke-width:1.5;opacity:.8}.tick.major{stroke:#e7f1fb;stroke-width:3}
+.metric{fill:#e9f5ff;font-size:10px;text-anchor:middle;letter-spacing:.3px}.metricValue{fill:var(--accent);font-size:13px;font-weight:700;text-anchor:middle}
+.hand{stroke-linecap:round;filter:drop-shadow(0 1px 2px #000)}.hour{stroke:#f2f5f8;stroke-width:5}.minute{stroke:#b9d0e3;stroke-width:3.2}.second{stroke:var(--accent);stroke-width:1.5}.hub{fill:#e9f1f8;stroke:#263d50;stroke-width:2}
+.panel{width:min(100%,420px);background:#1b2430;border:1px solid #303d4d;border-radius:14px;padding:13px;display:grid;gap:10px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:9px}label{font-size:12px;color:#b8c7d6;display:grid;gap:5px}select{width:100%;background:#0d141d;color:#f3f7fb;border:1px solid #435366;border-radius:8px;padding:9px;font-size:14px}
+.toggles{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px} .toggles label{display:flex;align-items:center;gap:7px;font-size:13px;color:#e1eaf2}input{accent-color:#42baff}
+.note{max-width:420px;color:#9eacba;font-size:12px;line-height:1.45;text-align:center}
+</style>
+</head>
+<body>
+<h1>Mountain Watch · версия 1.1</h1>
+<div class="watch">
+<svg viewBox="0 0 360 360" role="img" aria-label="Аналоговый циферблат с горами">
+<defs>
+ <linearGradient id="mountain" x1="0" y1="0" x2="0" y2="1"><stop id="peak" offset="0" stop-color="#8bd7ff"/><stop offset="1" stop-color="#15517e"/></linearGradient>
+ <linearGradient id="snow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4fbff"/><stop offset="1" stop-color="#6d879c"/></linearGradient>
+ <clipPath id="inner"><circle cx="180" cy="180" r="169"/></clipPath>
+</defs>
+<g clip-path="url(#inner)">
+ <circle cx="180" cy="180" r="170" fill="none" stroke="#65788b" stroke-width="1"/>
+ <g id="mountains" opacity=".88">
+  <path d="M-5 235 L65 145 96 183 151 105 208 184 246 143 365 252 365 290 -5 290Z" fill="url(#mountain)"/>
+  <path d="M65 145 L80 165 96 183 82 177 73 184 61 169Z M151 105 L174 144 190 164 170 151 159 160 146 137Z M246 143 L268 178 287 199 264 186 251 193 237 168Z" fill="url(#snow)" opacity=".9"/>
+  <path d="M-5 250 L48 211 88 238 133 185 179 239 225 201 279 247 365 219 365 300 -5 300Z" fill="#0c2740" opacity=".8"/>
+  <path d="M-5 270 Q75 235 145 267 T290 261 T365 270 L365 310 -5 310Z" fill="#071522"/>
+ </g>
+ <text x="180" y="48" class="date" text-anchor="middle" id="date">12 НОЯ · ЧТ</text>
+ <g id="ticks"></g>
+ <g id="numbers">
+  <text x="180" y="78" class="num">12</text><text x="282" y="183" class="num">3</text><text x="180" y="288" class="num">6</text><text x="78" y="183" class="num">9</text>
+ </g>
+ <g id="metrics">
+  <g data-metric="weather"><text x="112" y="235" class="metric">ПОГОДА</text><text x="112" y="252" class="metricValue">+18°</text></g>
+  <g data-metric="battery"><text x="248" y="235" class="metric">БАТАРЕЯ</text><text x="248" y="252" class="metricValue">86%</text></g>
+  <g data-metric="steps"><text x="112" y="275" class="metric">ШАГИ</text><text x="112" y="291" class="metricValue">6 420</text></g>
+  <g data-metric="pulse"><text x="248" y="275" class="metric">ПУЛЬС</text><text x="248" y="291" class="metricValue">72</text></g>
+ </g>
+ <g id="hands">
+  <line id="hour" class="hand hour" x1="180" y1="180" x2="180" y2="126"/>
+  <line id="minute" class="hand minute" x1="180" y1="180" x2="180" y2="91"/>
+  <line id="second" class="hand second" x1="180" y1="195" x2="180" y2="76"/>
+  <circle class="hub" cx="180" cy="180" r="7"/>
+ </g>
+</g>
+</svg>
+</div>
+<section class="panel">
+ <div class="controls">
+  <label>Цвет гор<select id="palette"><option value="blue">Сине-голубой</option><option value="gold">Золотисто-оранжевый</option><option value="violet">Фиолетовый</option><option value="silver">Серебристо-белый</option><option value="green">Зелёный</option><option value="turquoise">Бирюзовый</option></select></label>
+  <label>Стиль гор<select id="style"><option value="real">Реалистичный</option><option value="art">Художественный</option><option value="line">Контурный</option></select></label>
+ </div>
+ <div class="toggles">
+  <label><input type="checkbox" data-toggle="weather" checked> Погода</label>
+  <label><input type="checkbox" data-toggle="battery" checked> Батарея</label>
+  <label><input type="checkbox" data-toggle="steps" checked> Шаги</label>
+  <label><input type="checkbox" data-toggle="pulse" checked> Пульс</label>
+ </div>
+</section>
+<p class="note">Это интерактивный предварительный макет. Значения погоды, шагов, пульса и батареи демонстрационные. Для установки на Galaxy Watch SM‑R800 потребуется сборка и подпись Tizen-пакета (.TPK) в Tizen Studio.</p>
+<script>
+const tickGroup=document.getElementById('ticks');
+for(let i=0;i<60;i++){const a=i*Math.PI/30-Math.PI/2,r1=i%5===0?148:153,r2=163;const x1=180+Math.cos(a)*r1,y1=180+Math.sin(a)*r1,x2=180+Math.cos(a)*r2,y2=180+Math.sin(a)*r2;const l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',x1);l.setAttribute('y1',y1);l.setAttribute('x2',x2);l.setAttribute('y2',y2);l.setAttribute('class',i%5===0?'tick major':'tick');tickGroup.appendChild(l)}
+const palettes={blue:['#8bd7ff','#15517e','#43baff'],gold:['#ffe0a0','#a94e16','#ffb34d'],violet:['#e0b5ff','#60338c','#c18aff'],silver:['#ffffff','#65798d','#dce8f2'],green:['#b9ed9c','#28633d','#8bdc77'],turquoise:['#a4fff1','#147c79','#5ce0d0']};
+document.getElementById('palette').addEventListener('change',e=>{const p=palettes[e.target.value];document.querySelector('#peak').setAttribute('stop-color',p[0]);document.querySelector('#mountain path').setAttribute('fill','url(#mountain)');document.querySelector('#mountain').style.filter='';document.documentElement.style.setProperty('--accent',p[2]);document.querySelector('#mountain').querySelectorAll('path')[0].setAttribute('fill',p[1]);});
+document.getElementById('style').addEventListener('change',e=>{const m=document.getElementById('mountains');m.setAttribute('opacity',e.target.value==='line'?'1':'.88');m.querySelectorAll('path').forEach((p,i)=>{if(e.target.value==='line'){p.setAttribute('fill','none');p.setAttribute('stroke','var(--accent)');p.setAttribute('stroke-width',i===0?'2':'1.2')}else{p.removeAttribute('stroke');p.removeAttribute('stroke-width');p.setAttribute('fill',i===0?'url(#mountain)':i===1?'url(#snow)':i===2?'#0c2740':'#071522');p.setAttribute('opacity',e.target.value==='art'?'0.72':'1')}})});
+document.querySelectorAll('[data-toggle]').forEach(c=>c.addEventListener('change',()=>{const g=document.querySelector('[data-metric="'+c.dataset.toggle+'"]');g.style.display=c.checked?'':'none'}));
+function update(){const d=new Date(),s=d.getSeconds()+d.getMilliseconds()/1000,m=d.getMinutes()+s/60,h=(d.getHours()%12)+m/60;document.getElementById('second').setAttribute('transform','rotate('+(s*6)+' 180 180)');document.getElementById('minute').setAttribute('transform','rotate('+(m*6)+' 180 180)');document.getElementById('hour').setAttribute('transform','rotate('+(h*30)+' 180 180)');const days=['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ'],months=['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];document.getElementById('date').textContent=String(d.getDate()).padStart(2,'0')+' '+months[d.getMonth()]+' · '+days[d.getDay()]}
+update();setInterval(update,250);
+</script>
+</body></html>
