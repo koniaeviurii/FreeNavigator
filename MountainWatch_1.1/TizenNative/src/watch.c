@@ -27,6 +27,8 @@ typedef struct {
     int red, green, blue;
     int drag_dx, drag_dy;
     bool dragging;
+    bool moved;
+    int color_index;
     const char *caption;
 } widget_s;
 
@@ -78,6 +80,29 @@ static Evas_Object *create_hand(Evas *canvas)
     return o;
 }
 
+static void widget_apply_color(widget_s *w)
+{
+    static const int palette[5][3] = {
+        {18, 151, 225}, {226, 58, 78}, {70, 205, 104},
+        {18, 174, 220}, {218, 166, 68}
+    };
+    int p;
+    if (!w) return;
+    p = w->color_index % 5;
+    w->red = palette[p][0];
+    w->green = palette[p][1];
+    w->blue = palette[p][2];
+    evas_object_color_set(w->disc, w->red, w->green, w->blue, 220);
+}
+
+static void widget_save_color(widget_s *w)
+{
+    char key[40];
+    if (!w || !w->app) return;
+    snprintf(key, sizeof(key), "widget_%d_color", (int)(w - w->app->widgets));
+    preference_set_int(key, w->color_index);
+}
+
 static void widget_save_position(widget_s *w)
 {
     char key[40];
@@ -117,6 +142,7 @@ static void widget_down(void *data, Evas *e, Evas_Object *obj, void *event)
     w->drag_dx = w->x - ev->output.x;
     w->drag_dy = w->y - ev->output.y;
     w->dragging = true;
+    w->moved = false;
 }
 
 static void widget_move_event(void *data, Evas *e, Evas_Object *obj, void *event)
@@ -126,6 +152,7 @@ static void widget_move_event(void *data, Evas *e, Evas_Object *obj, void *event
     int x, y, maxr;
     (void)e; (void)obj;
     if (!w || !ev || !w->dragging) return;
+    w->moved = true;
     x = ev->cur.output.x + w->drag_dx;
     y = ev->cur.output.y + w->drag_dy;
     maxr = (w->app->width < w->app->height ?
@@ -143,7 +170,13 @@ static void widget_up(void *data, Evas *e, Evas_Object *obj, void *event)
     (void)e; (void)obj; (void)event;
     if (w) {
         w->dragging = false;
-        widget_save_position(w);
+        if (w->moved) {
+            widget_save_position(w);
+        } else {
+            w->color_index = (w->color_index + 1) % 5;
+            widget_apply_color(w);
+            widget_save_color(w);
+        }
     }
 }
 
@@ -174,8 +207,16 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     w->app = ad;
     w->x = x; w->y = y; w->radius = radius;
     w->red = red; w->green = green; w->blue = blue;
+    w->color_index = index;
     w->caption = caption;
     widget_load_position(w);
+    {
+        char key[40];
+        int saved_color;
+        snprintf(key, sizeof(key), "widget_%d_color", index);
+        if (preference_get_int(key, &saved_color) == APP_ERROR_NONE &&
+            saved_color >= 0 && saved_color < 5) w->color_index = saved_color;
+    }
     w->disc = evas_object_polygon_add(canvas);
     evas_object_color_set(w->disc, red, green, blue, 220);
     for (i = 0; i < WIDGET_POINTS; i++) {
@@ -186,6 +227,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     }
     evas_object_move(w->disc, x - radius, y - radius);
     evas_object_show(w->disc);
+    widget_apply_color(w);
 
     w->label = elm_label_add(ad->win);
     elm_object_text_set(w->label, caption);
