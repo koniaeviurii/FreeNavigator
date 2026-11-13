@@ -1,0 +1,75 @@
+name: Mountain Watch Tizen 4.0 build check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - mountainwatch-1.1
+    paths:
+      - "MountainWatch_1.1/TizenNative/**"
+      - ".github/workflows/mountain-watch-tizen-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+
+      - name: Download Tizen Studio 4.0 CLI installer
+        run: |
+          curl -fL --retry 3 \
+            https://download.tizen.org/sdk/Installer/tizen-studio_4.0/web-cli_Tizen_Studio_4.0_ubuntu-64.bin \
+            -o /tmp/tizen-cli.bin
+          chmod +x /tmp/tizen-cli.bin
+
+      - name: Install Tizen Studio base tools
+        run: |
+          /tmp/tizen-cli.bin --accept-license --no-java-check "$HOME/tizen-studio"
+
+      - name: Install Wearable 4.0 native build tools
+        run: |
+          "$HOME/tizen-studio/package-manager/package-manager-cli.bin" \
+            install --accept-license --no-java-check \
+            WEARABLE-4.0-NativeAppDevelopment-CLI
+
+      - name: Generate a clean native Watch project
+        run: |
+          export PATH="$HOME/tizen-studio/tools/ide/bin:$PATH"
+          mkdir -p "$RUNNER_TEMP/tizen-workspace"
+          tizen create native-project -p wearable-4.0.0 -t watch \
+            -n MountainWatch -- "$RUNNER_TEMP/tizen-workspace"
+
+      - name: Apply Mountain Watch sources and manifest
+        run: |
+          PROJECT="$RUNNER_TEMP/tizen-workspace/MountainWatch"
+          cp MountainWatch_1.1/TizenNative/src/watch.c "$PROJECT/src/watch.c"
+          cp MountainWatch_1.1/TizenNative/tizen-manifest.xml "$PROJECT/tizen-manifest.xml"
+          if [ -f "$PROJECT/project_def.prop" ]; then
+            sed -i 's/^APPNAME *=.*/APPNAME = MountainWatch/' "$PROJECT/project_def.prop"
+            sed -i 's|^USER_SRCS *=.*|USER_SRCS = src/watch.c|' "$PROJECT/project_def.prop"
+            sed -i 's|^USER_LIBS *=.*|USER_LIBS = -lm|' "$PROJECT/project_def.prop"
+          fi
+
+      - name: Compile for Galaxy Watch ARM
+        run: |
+          export PATH="$HOME/tizen-studio/tools/ide/bin:$PATH"
+          tizen build-native -a arm -c llvm -C Debug -- \
+            "$RUNNER_TEMP/tizen-workspace/MountainWatch"
+
+      - name: Upload native build output (not signed for a physical watch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MountainWatch-1.1-Tizen4-ARM-build-check
+          path: ${{ runner.temp }}/tizen-workspace/MountainWatch/Debug/
+          if-no-files-found: error
