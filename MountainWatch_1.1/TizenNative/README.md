@@ -7,7 +7,7 @@ Target: Samsung Galaxy Watch SM-R800 (Tizen 4.0, wearable).
 This directory is the beginning of the native C watch application. It is **not yet a finished watch face** and does not contain a signed `.tpk` package.
 
 Current source:
-- `src/watch.c` — native watch lifecycle, analog clock with two tapered filled metal hour/minute hands, one thin blue seconds hand and subtle hand shadows, ambient-mode updates, four separate touch-drag widget targets with translucent glass-like highlights constrained to the round dial, a layered concentric steel-tone bezel and a circular silver/blue center cap, fixed silver minute/hour marks and cardinal numerals, persistent widget positions/colors, live battery percentage, sensor listeners for heart rate and steps when supported by the watch, and a clearly approximate distance estimate derived from steps.
+- `src/watch.c` — native watch lifecycle, analog clock with two tapered filled metal hour/minute hands with slim blue inlays, one thin blue seconds hand and subtle hand shadows, ambient-mode updates, four separate touch-drag widget targets with translucent glass-like highlights constrained to the round dial, a layered concentric steel-tone bezel and a circular silver/blue center cap, fixed silver minute/hour marks and cardinal numerals, persistent widget positions/colors, live battery percentage, sensor listeners for heart rate and steps when supported by the watch, and a clearly approximate distance estimate derived from steps.
 - `tizen-manifest.xml` — wearable application manifest.
 
 ## Required build environment
