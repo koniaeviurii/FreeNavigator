@@ -37,6 +37,12 @@ https://developer.samsung.com/galaxy-watch-tizen/creating-your-first-app/native-
 5. Add low-power ambient rendering and verify performance on the SM-R800.
 6. Health sensor listeners are stopped while the watch is paused or in ambient mode to reduce power use, and are restarted when active. Build, sign and test the `.tpk` on the actual watch. Compilation has not yet been verified because the Tizen 4.0 SDK/toolchain is not available in this environment.
 
+## Automated ARM build check
+
+The repository now includes `.github/workflows/mountain-watch-tizen-build.yml`. It provisions the Tizen Studio 4.0 command-line tools, installs the Wearable 4.0 native compiler, generates a clean Watch-template project, inserts this project's C source and manifest, and attempts an ARM Debug compilation. The workflow uploads the compiler output for inspection.
+
+This workflow is a **compile check only**. It does not claim to produce a Galaxy-Watch-installable package: a physical-watch TPK must be signed with a valid Samsung/Tizen security profile. A default emulator profile is not sufficient for the SM-R800.
+
 ## Important
 
 The HTML files elsewhere in this project are previews only. Demo values in those previews are not live sensor readings. Do not install an HTML preview as if it were a Tizen watch face.
