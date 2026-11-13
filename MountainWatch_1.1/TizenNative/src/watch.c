@@ -128,7 +128,7 @@ static void widget_load_position(widget_s *w)
 static void widget_move(widget_s *w, int x, int y)
 {
     evas_object_move(w->disc, x - w->radius, y - w->radius);
-    evas_object_move(w->label, x - w->radius, y - 10);
+    evas_object_move(w->label, x - w->radius, y - 18);
     /* The polygon is built in local coordinates; moving its object moves it. */
     w->x = x;
     w->y = y;
@@ -233,8 +233,8 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     w->label = elm_label_add(ad->win);
     elm_object_text_set(w->label, caption);
     evas_object_color_set(w->label, 255, 255, 255, 255);
-    evas_object_resize(w->label, radius * 2, 24);
-    evas_object_move(w->label, x - radius, y - 10);
+    evas_object_resize(w->label, radius * 2, 40);
+    evas_object_move(w->label, x - radius, y - 18);
     evas_object_show(w->label);
     /* Let touches pass through the text to the draggable circular target. */
     evas_object_pass_events_set(w->label, EINA_TRUE);
