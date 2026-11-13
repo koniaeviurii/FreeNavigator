@@ -37,11 +37,28 @@ jobs:
         run: |
           /tmp/tizen-cli.bin --accept-license --no-java-check "$HOME/tizen-studio"
 
-      - name: Install Wearable 4.0 native build tools
+      - name: Discover and install Wearable 4.0 native packages
         run: |
-          "$HOME/tizen-studio/package-manager/package-manager-cli.bin" \
-            install --accept-license --no-java-check \
-            WEARABLE-4.0-NativeAppDevelopment-CLI
+          PM="$HOME/tizen-studio/package-manager/package-manager-cli.bin"
+          "$PM" show-pkgs --tree | tee /tmp/tizen-packages.txt
+
+          # Package identifiers vary between Tizen Studio repository snapshots.
+          # Install the actual Wearable 4.0 platform and native development package
+          # only when they are present in the package catalogue.
+          grep -E 'WEARABLE-4\.0' /tmp/tizen-packages.txt || true
+
+          if grep -q 'WEARABLE-4\.0-NativeAppDevelopment' /tmp/tizen-packages.txt; then
+            "$PM" install --accept-license --no-java-check WEARABLE-4.0-NativeAppDevelopment
+          elif grep -q 'WEARABLE-4\.0-Native' /tmp/tizen-packages.txt; then
+            PKG="$(grep -oE 'WEARABLE-4\.0-Native[A-Za-z0-9._-]*' /tmp/tizen-packages.txt | head -n1)"
+            "$PM" install --accept-license --no-java-check "$PKG"
+          else
+            echo "::error::Wearable 4.0 native development package is not listed by this SDK repository."
+            exit 1
+          fi
+
+          "$PM" show-pkgs --tree | tee /tmp/tizen-packages-after.txt
+          grep -E 'WEARABLE-4\.0.*Native' /tmp/tizen-packages-after.txt
 
       - name: Generate a clean native Watch project
         run: |
