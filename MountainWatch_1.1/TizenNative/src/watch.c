@@ -24,6 +24,7 @@ typedef struct appdata_s appdata_s;
 typedef struct {
     appdata_s *app;
     Evas_Object *disc;
+    Evas_Object *disc_gloss;
     Evas_Object *label;
     int x, y, radius;
     int red, green, blue;
@@ -191,6 +192,7 @@ static void widget_load_position(widget_s *w)
 static void widget_move(widget_s *w, int x, int y)
 {
     evas_object_move(w->disc, x - w->radius, y - w->radius);
+    if (w->disc_gloss) evas_object_move(w->disc_gloss, x - (int)(w->radius * .62), y - (int)(w->radius * .72));
     evas_object_move(w->label, x - w->radius, y - 18);
     /* The polygon is built in local coordinates; moving its object moves it. */
     w->x = x;
