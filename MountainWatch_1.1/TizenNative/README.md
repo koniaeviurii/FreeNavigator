@@ -19,9 +19,9 @@ https://developer.samsung.com/galaxy-watch-tizen/creating-your-first-app/native-
 
 ## Next implementation tasks
 
-1. Import the approved dial artwork as a resource and split it into independent layers. The current C source draws a temporary dark-background prototype with three hands and four independently draggable circular touch targets; it does not yet render the approved photographic face. The four widgets must be movable independently; hands, numerals and the rest of the dial remain fixed.
+1. Import the approved dial artwork as a resource and split it into independent layers. The current C source draws a temporary dark-background prototype with three hands and four independently draggable circular touch targets; it does not yet render the approved photographic face. The four widgets must be movable independently; hands, numerals and the rest of the dial remain fixed. Dragging a widget saves its position; tapping the central hub resets all four positions.
 2. Draw the approved metallic hour/minute hands and thin seconds hand without duplicating them.
-3. Implement independent color settings and persistent positions for the bezel/dial, hands, each of the four widgets, and the landscape. The four prototype widgets currently have separate base colors but no on-watch color picker or saved positions yet.
+3. Implement independent color settings and persistent positions for the bezel/dial, hands, each of the four widgets, and the landscape. The four prototype widgets currently have separate base colors. Their positions are stored with the Tizen application preference API when a drag ends and restored when the watch app starts. Tapping the central hub restores the four default positions. An on-watch color picker is not implemented yet.
 4. Connect supported watch data sources for steps, heart rate and battery. Distance and weather need a defined data source/companion connection.
 5. Add low-power ambient rendering and verify performance on the SM-R800.
 6. Build, sign and test the `.tpk` on the actual watch. Compilation has not yet been verified because the Tizen 4.0 SDK/toolchain is not available in this environment.
