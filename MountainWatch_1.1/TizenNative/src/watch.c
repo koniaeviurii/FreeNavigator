@@ -10,6 +10,7 @@
 #include <Elementary.h>
 #include <dlog.h>
 #include <math.h>
+#include <device/battery.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -243,6 +244,20 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_UP, widget_up, w);
 }
 
+static void refresh_battery_widget(appdata_s *ad)
+{
+    int percent = -1;
+    char text[48];
+    widget_s *w;
+    if (!ad) return;
+    if (device_battery_get_percent(&percent) != DEVICE_ERROR_NONE ||
+        percent < 0 || percent > 100) return;
+    w = &ad->widgets[2];
+    if (!w->label) return;
+    snprintf(text, sizeof(text), "BATTERY\\n%d%%", percent);
+    elm_object_text_set(w->label, text);
+}
+
 static bool app_create(int width, int height, void *data)
 {
     appdata_s *ad = data;
@@ -309,6 +324,8 @@ static bool app_create(int width, int height, void *data)
     evas_object_show(ad->hub_inner);
     evas_object_pass_events_set(ad->hub_inner, EINA_TRUE);
 
+    refresh_battery_widget(ad);
+
     if (watch_time_get_current_time(&wt) == APP_ERROR_NONE) {
         update_watch(ad, wt, false);
         watch_time_delete(wt);
@@ -326,7 +343,10 @@ static void app_control(app_control_h control, void *data)
 static void app_time_tick(watch_time_h wt, void *data)
 {
     appdata_s *ad = data;
-    if (ad && !ad->ambient) update_watch(ad, wt, false);
+    if (ad && !ad->ambient) {
+        update_watch(ad, wt, false);
+        refresh_battery_widget(ad);
+    }
 }
 static void app_ambient_tick(watch_time_h wt, void *data)
 {
