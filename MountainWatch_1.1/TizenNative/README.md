@@ -29,3 +29,14 @@ https://developer.samsung.com/galaxy-watch-tizen/creating-your-first-app/native-
 ## Important
 
 The HTML files elsewhere in this project are previews only. Demo values in those previews are not live sensor readings. Do not install an HTML preview as if it were a Tizen watch face.
+
+## Подготовка графических слоёв
+
+В `tools/prepare_assets.py` добавлен воспроизводимый скрипт извлечения четырёх круглых индикаторов из утверждённого изображения: battery, pulse, steps и distance. Он сохраняет исходные градиенты, значки и цифры в PNG с прозрачными углами.
+
+Пример запуска:
+```bash
+python3 tools/prepare_assets.py approved-dial.png generated-widgets
+```
+
+**Ограничение текущего этапа:** исходная картинка уже содержит индикаторы и стрелки как часть единого растра. Извлечённые PNG пока нельзя накладывать поверх исходного изображения — получится дублирование. Также тестовое автоматическое удаление индикаторов/стрелок даёт заметные артефакты и не включено в проект как готовый фон. Для корректного циферблата нужно вручную/послойно восстановить фон, отделить три стрелки и затем подключить независимые виджеты.
