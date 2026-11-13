@@ -6,6 +6,7 @@
  */
 #include <watch_app.h>
 #include <app.h>
+#include <app_common.h>
 #include <Elementary.h>
 #include <dlog.h>
 #include <math.h>
@@ -77,15 +78,34 @@ static Evas_Object *create_hand(Evas *canvas)
     return o;
 }
 
+static void widget_save_position(widget_s *w)
+{
+    char key[40];
+    if (!w || !w->app) return;
+    snprintf(key, sizeof(key), "widget_%d_x", (int)(w - w->app->widgets));
+    preference_set_int(key, w->x);
+    snprintf(key, sizeof(key), "widget_%d_y", (int)(w - w->app->widgets));
+    preference_set_int(key, w->y);
+}
+
+static void widget_load_position(widget_s *w)
+{
+    char key[40];
+    int value;
+    if (!w || !w->app) return;
+    snprintf(key, sizeof(key), "widget_%d_x", (int)(w - w->app->widgets));
+    if (preference_get_int(key, &value) == APP_ERROR_NONE) w->x = value;
+    snprintf(key, sizeof(key), "widget_%d_y", (int)(w - w->app->widgets));
+    if (preference_get_int(key, &value) == APP_ERROR_NONE) w->y = value;
+}
+
 static void widget_move(widget_s *w, int x, int y)
 {
-    int i;
     evas_object_move(w->disc, x - w->radius, y - w->radius);
     evas_object_move(w->label, x - w->radius, y - 10);
     /* The polygon is built in local coordinates; moving its object moves it. */
     w->x = x;
     w->y = y;
-    (void)i;
 }
 
 static void widget_down(void *data, Evas *e, Evas_Object *obj, void *event)
@@ -121,7 +141,28 @@ static void widget_up(void *data, Evas *e, Evas_Object *obj, void *event)
 {
     widget_s *w = data;
     (void)e; (void)obj; (void)event;
-    if (w) w->dragging = false;
+    if (w) {
+        w->dragging = false;
+        widget_save_position(w);
+    }
+}
+
+static void reset_widget_positions(void *data, Evas *e, Evas_Object *obj, void *event)
+{
+    appdata_s *ad = data;
+    int i;
+    (void)e; (void)obj; (void)event;
+    if (!ad) return;
+    for (i = 0; i < WIDGET_COUNT; i++) {
+        widget_s *w = &ad->widgets[i];
+        int x, y;
+        if (i == 0) { x = ad->cx - ad->radius * .53; y = ad->cy - ad->radius * .43; }
+        else if (i == 1) { x = ad->cx + ad->radius * .53; y = ad->cy - ad->radius * .43; }
+        else if (i == 2) { x = ad->cx - ad->radius * .42; y = ad->cy + ad->radius * .48; }
+        else { x = ad->cx + ad->radius * .42; y = ad->cy + ad->radius * .48; }
+        widget_move(w, x, y);
+        widget_save_position(w);
+    }
 }
 
 static void create_widget(appdata_s *ad, Evas *canvas, int index,
@@ -134,6 +175,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     w->x = x; w->y = y; w->radius = radius;
     w->red = red; w->green = green; w->blue = blue;
     w->caption = caption;
+    widget_load_position(w);
     w->disc = evas_object_polygon_add(canvas);
     evas_object_color_set(w->disc, red, green, blue, 220);
     for (i = 0; i < WIDGET_POINTS; i++) {
@@ -151,6 +193,8 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     evas_object_resize(w->label, radius * 2, 24);
     evas_object_move(w->label, x - radius, y - 10);
     evas_object_show(w->label);
+    /* Let touches pass through the text to the draggable circular target. */
+    evas_object_pass_events_set(w->label, EINA_TRUE);
 
     evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_DOWN, widget_down, w);
     evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_MOVE, widget_move_event, w);
@@ -199,6 +243,9 @@ static bool app_create(int width, int height, void *data)
     evas_object_resize(ad->hub_outer, 12, 12);
     evas_object_move(ad->hub_outer, ad->cx - 6, ad->cy - 6);
     evas_object_show(ad->hub_outer);
+    /* Tap the central hub to restore all four indicators to their defaults. */
+    evas_object_event_callback_add(ad->hub_outer, EVAS_CALLBACK_MOUSE_UP,
+                                   reset_widget_positions, ad);
     ad->hub_inner = evas_object_rectangle_add(canvas);
     evas_object_color_set(ad->hub_inner, 0, 174, 255, 255);
     evas_object_resize(ad->hub_inner, 5, 5);
