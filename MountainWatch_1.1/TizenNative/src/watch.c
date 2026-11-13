@@ -299,6 +299,21 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     evas_object_show(w->disc);
     widget_apply_color(w);
 
+    /* A small translucent highlight adds a glass-like raised indicator finish. */
+    w->disc_gloss = evas_object_polygon_add(canvas);
+    for (i = 0; i < WIDGET_POINTS; i++) {
+        double a = 2.0 * PI * i / WIDGET_POINTS;
+        int gloss_r = (int)(radius * .48);
+        evas_object_polygon_point_add(w->disc_gloss,
+            gloss_r + (int)(cos(a) * gloss_r),
+            gloss_r + (int)(sin(a) * gloss_r));
+    }
+    evas_object_color_set(w->disc_gloss, 255, 255, 255, 58);
+    evas_object_move(w->disc_gloss,
+        x - (int)(radius * .62), y - (int)(radius * .72));
+    evas_object_show(w->disc_gloss);
+    evas_object_pass_events_set(w->disc_gloss, EINA_TRUE);
+
     w->label = elm_label_add(ad->win);
     elm_object_text_set(w->label, caption);
     evas_object_color_set(w->label, 255, 255, 255, 255);
@@ -359,7 +374,7 @@ static void pedometer_event(sensor_h sensor, sensor_event_s *event, void *data)
      * Provisional estimate only: 0.70 m per step.
      * This is not GPS distance and must be user-calibrated before release.
      */
-    snprintf(distance_text, sizeof(distance_text), "ABOUT %.2f km",
+    snprintf(distance_text, sizeof(distance_text), "DISTANCE\\n~%.2f km",
              (steps * 0.70f) / 1000.0f);
     if (ad && ad->widgets[3].label)
         elm_object_text_set(ad->widgets[3].label, distance_text);
