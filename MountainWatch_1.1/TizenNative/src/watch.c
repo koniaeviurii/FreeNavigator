@@ -414,7 +414,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
                           int blue, const char *caption)
 {
     widget_s *w = &ad->widgets[index];
-    int i;
+    int i, gloss_r, glint_rx, glint_ry;
     w->app = ad;
     w->x = x; w->y = y; w->radius = radius;
     w->red = red; w->green = green; w->blue = blue;
@@ -444,9 +444,9 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
 
     /* A small translucent highlight adds a glass-like raised indicator finish. */
     w->disc_gloss = evas_object_polygon_add(canvas);
+    gloss_r = (int)(radius * .48);
     for (i = 0; i < WIDGET_POINTS; i++) {
         double a = 2.0 * PI * i / WIDGET_POINTS;
-        int gloss_r = (int)(radius * .48);
         evas_object_polygon_point_add(w->disc_gloss,
             gloss_r + (int)(cos(a) * gloss_r),
             gloss_r + (int)(sin(a) * gloss_r));
@@ -460,10 +460,10 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
 
     /* Tiny specular glint at the upper edge, part of the movable widget. */
     w->disc_glint = evas_object_polygon_add(canvas);
+    glint_rx = (int)(radius * .13);
+    glint_ry = (int)(radius * .055);
     for (i = 0; i < WIDGET_POINTS; i++) {
         double a = 2.0 * PI * i / WIDGET_POINTS;
-        int glint_rx = (int)(radius * .13);
-        int glint_ry = (int)(radius * .055);
         evas_object_polygon_point_add(w->disc_glint,
             glint_rx + (int)(cos(a) * glint_rx),
             glint_ry + (int)(sin(a) * glint_ry));
