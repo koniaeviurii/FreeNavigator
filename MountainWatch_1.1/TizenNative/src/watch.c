@@ -39,6 +39,7 @@ typedef struct {
 struct appdata_s {
     Evas_Object *win, *background;
     Evas_Object *hour_hand, *minute_hand, *second_hand;
+    Evas_Object *hour_inlay, *minute_inlay;
     Evas_Object *hour_shadow, *minute_shadow;
     Evas_Object *tick_marks[60];
     Evas_Object *numerals[4];
@@ -131,6 +132,12 @@ static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
                      ad->radius * .43, ambient ? 5 : 9, 224, 235, 247, 0);
     set_hand_polygon(ad->minute_hand, ad->cx, ad->cy, minute_angle,
                      ad->radius * .66, ambient ? 4 : 7, 205, 222, 239, 0);
+    /* Narrow blue steel inlays add the approved blue accent without adding
+     * any extra hands: each inlay follows its corresponding metal hand. */
+    set_hand_polygon(ad->hour_inlay, ad->cx, ad->cy, hour_angle,
+                     ad->radius * .34, ambient ? 2 : 3, 25, 150, 218, 0);
+    set_hand_polygon(ad->minute_inlay, ad->cx, ad->cy, minute_angle,
+                     ad->radius * .53, ambient ? 2 : 3, 25, 150, 218, 0);
     if (ambient) {
         evas_object_hide(ad->second_hand);
     } else {
@@ -578,6 +585,8 @@ static bool app_create(int width, int height, void *data)
     ad->minute_shadow = create_hand(canvas);
     ad->hour_hand = create_hand(canvas);
     ad->minute_hand = create_hand(canvas);
+    ad->hour_inlay = create_hand(canvas);
+    ad->minute_inlay = create_hand(canvas);
     ad->second_hand = create_second_hand(canvas);
 
     /* Four separate touch targets; each has its own position and base color. */
@@ -614,6 +623,8 @@ static bool app_create(int width, int height, void *data)
     evas_object_raise(ad->minute_shadow);
     evas_object_raise(ad->hour_hand);
     evas_object_raise(ad->minute_hand);
+    evas_object_raise(ad->hour_inlay);
+    evas_object_raise(ad->minute_inlay);
     evas_object_raise(ad->second_hand);
 
     ad->hub_outer = create_dial_circle(canvas, ad->cx, ad->cy, 7,
