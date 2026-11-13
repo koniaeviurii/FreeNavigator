@@ -349,8 +349,12 @@ static void start_health_sensors(appdata_s *ad)
         sensor_is_supported(SENSOR_HRM, &supported) == SENSOR_ERROR_NONE && supported &&
         sensor_get_default_sensor(SENSOR_HRM, &ad->hrm_sensor) == SENSOR_ERROR_NONE &&
         sensor_create_listener(ad->hrm_sensor, &ad->hrm_listener) == SENSOR_ERROR_NONE) {
-        if (sensor_listener_set_event_cb(ad->hrm_listener, 1000, hrm_event, ad) == SENSOR_ERROR_NONE)
-            sensor_listener_start(ad->hrm_listener);
+        if (sensor_listener_set_event_cb(ad->hrm_listener, 1000, hrm_event, ad) != SENSOR_ERROR_NONE ||
+            sensor_listener_start(ad->hrm_listener) != SENSOR_ERROR_NONE) {
+            dlog_print(DLOG_WARN, LOG_TAG, "Heart-rate sensor could not be started");
+            sensor_destroy_listener(ad->hrm_listener);
+            ad->hrm_listener = NULL;
+        }
     }
 
     supported = false;
@@ -358,8 +362,12 @@ static void start_health_sensors(appdata_s *ad)
         sensor_is_supported(SENSOR_HUMAN_PEDOMETER, &supported) == SENSOR_ERROR_NONE && supported &&
         sensor_get_default_sensor(SENSOR_HUMAN_PEDOMETER, &ad->pedometer_sensor) == SENSOR_ERROR_NONE &&
         sensor_create_listener(ad->pedometer_sensor, &ad->pedometer_listener) == SENSOR_ERROR_NONE) {
-        if (sensor_listener_set_event_cb(ad->pedometer_listener, 1000, pedometer_event, ad) == SENSOR_ERROR_NONE)
-            sensor_listener_start(ad->pedometer_listener);
+        if (sensor_listener_set_event_cb(ad->pedometer_listener, 1000, pedometer_event, ad) != SENSOR_ERROR_NONE ||
+            sensor_listener_start(ad->pedometer_listener) != SENSOR_ERROR_NONE) {
+            dlog_print(DLOG_WARN, LOG_TAG, "Pedometer sensor could not be started");
+            sensor_destroy_listener(ad->pedometer_listener);
+            ad->pedometer_listener = NULL;
+        }
     }
 }
 
