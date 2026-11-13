@@ -35,7 +35,7 @@ typedef struct {
 struct appdata_s {
     Evas_Object *win, *background;
     Evas_Object *hour_hand, *minute_hand, *second_hand;
-    Evas_Object *hub_outer, *hub_inner;
+    Evas_Object *hub_touch, *hub_outer, *hub_inner;
     int width, height, cx, cy, radius;
     bool ambient;
     widget_s widgets[WIDGET_COUNT];
@@ -279,6 +279,20 @@ static bool app_create(int width, int height, void *data)
         ad->cy + ad->radius * .48, ad->radius * .13, 70, 205, 104, "BATTERY");
     create_widget(ad, canvas, 3, ad->cx + ad->radius * .42,
         ad->cy + ad->radius * .48, ad->radius * .13, 18, 174, 220, "DISTANCE");
+
+    /* Keep the center reset action easy to hit on the small watch display. */
+    ad->hub_touch = evas_object_rectangle_add(canvas);
+    evas_object_color_set(ad->hub_touch, 0, 0, 0, 1);
+    evas_object_resize(ad->hub_touch, 40, 40);
+    evas_object_move(ad->hub_touch, ad->cx - 20, ad->cy - 20);
+    evas_object_show(ad->hub_touch);
+    evas_object_event_callback_add(ad->hub_touch, EVAS_CALLBACK_MOUSE_UP,
+                                   reset_widget_positions, ad);
+
+    /* Keep the analog hands visually above the four indicator discs. */
+    evas_object_raise(ad->hour_hand);
+    evas_object_raise(ad->minute_hand);
+    evas_object_raise(ad->second_hand);
 
     ad->hub_outer = evas_object_rectangle_add(canvas);
     evas_object_color_set(ad->hub_outer, 220, 235, 248, 255);
