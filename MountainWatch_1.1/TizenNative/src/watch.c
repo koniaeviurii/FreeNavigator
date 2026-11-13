@@ -265,7 +265,7 @@ static void update_sensor_label(appdata_s *ad, int index, const char *name, int 
 {
     char text[48];
     if (!ad || index < 0 || index >= WIDGET_COUNT || !ad->widgets[index].label) return;
-    snprintf(text, sizeof(text), "%s\\n%d", name, value);
+    snprintf(text, sizeof(text), "%s\n%d", name, value);
     elm_object_text_set(ad->widgets[index].label, text);
 }
 
