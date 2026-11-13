@@ -11,6 +11,7 @@
 #include <dlog.h>
 #include <math.h>
 #include <device/battery.h>
+#include <sensor.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -37,6 +38,8 @@ struct appdata_s {
     Evas_Object *win, *background;
     Evas_Object *hour_hand, *minute_hand, *second_hand;
     Evas_Object *hub_touch, *hub_outer, *hub_inner;
+    sensor_h hrm_sensor, pedometer_sensor;
+    sensor_listener_h hrm_listener, pedometer_listener;
     int width, height, cx, cy, radius;
     bool ambient;
     widget_s widgets[WIDGET_COUNT];
@@ -258,6 +261,68 @@ static void refresh_battery_widget(appdata_s *ad)
     elm_object_text_set(w->label, text);
 }
 
+static void update_sensor_label(appdata_s *ad, int index, const char *name, int value)
+{
+    char text[48];
+    if (!ad || index < 0 || index >= WIDGET_COUNT || !ad->widgets[index].label) return;
+    snprintf(text, sizeof(text), "%s\\n%d", name, value);
+    elm_object_text_set(ad->widgets[index].label, text);
+}
+
+static void hrm_event(sensor_h sensor, sensor_event_s *event, void *data)
+{
+    appdata_s *ad = data;
+    (void)sensor;
+    if (!event || event->value_count < 1) return;
+    if (event->values[0] > 0 && event->values[0] < 250)
+        update_sensor_label(ad, 1, "PULSE", (int)(event->values[0] + 0.5f));
+}
+
+static void pedometer_event(sensor_h sensor, sensor_event_s *event, void *data)
+{
+    appdata_s *ad = data;
+    (void)sensor;
+    if (!event || event->value_count < 1) return;
+    if (event->values[0] >= 0)
+        update_sensor_label(ad, 0, "STEPS", (int)(event->values[0] + 0.5f));
+}
+
+static void start_health_sensors(appdata_s *ad)
+{
+    bool supported = false;
+    if (!ad) return;
+
+    if (sensor_is_supported(SENSOR_HRM, &supported) == SENSOR_ERROR_NONE && supported &&
+        sensor_get_default_sensor(SENSOR_HRM, &ad->hrm_sensor) == SENSOR_ERROR_NONE &&
+        sensor_create_listener(ad->hrm_sensor, &ad->hrm_listener) == SENSOR_ERROR_NONE) {
+        if (sensor_listener_set_event_cb(ad->hrm_listener, 1000, hrm_event, ad) == SENSOR_ERROR_NONE)
+            sensor_listener_start(ad->hrm_listener);
+    }
+
+    supported = false;
+    if (sensor_is_supported(SENSOR_HUMAN_PEDOMETER, &supported) == SENSOR_ERROR_NONE && supported &&
+        sensor_get_default_sensor(SENSOR_HUMAN_PEDOMETER, &ad->pedometer_sensor) == SENSOR_ERROR_NONE &&
+        sensor_create_listener(ad->pedometer_sensor, &ad->pedometer_listener) == SENSOR_ERROR_NONE) {
+        if (sensor_listener_set_event_cb(ad->pedometer_listener, 1000, pedometer_event, ad) == SENSOR_ERROR_NONE)
+            sensor_listener_start(ad->pedometer_listener);
+    }
+}
+
+static void stop_health_sensors(appdata_s *ad)
+{
+    if (!ad) return;
+    if (ad->hrm_listener) {
+        sensor_listener_stop(ad->hrm_listener);
+        sensor_destroy_listener(ad->hrm_listener);
+        ad->hrm_listener = NULL;
+    }
+    if (ad->pedometer_listener) {
+        sensor_listener_stop(ad->pedometer_listener);
+        sensor_destroy_listener(ad->pedometer_listener);
+        ad->pedometer_listener = NULL;
+    }
+}
+
 static bool app_create(int width, int height, void *data)
 {
     appdata_s *ad = data;
@@ -294,6 +359,9 @@ static bool app_create(int width, int height, void *data)
         ad->cy + ad->radius * .48, ad->radius * .13, 70, 205, 104, "BATTERY");
     create_widget(ad, canvas, 3, ad->cx + ad->radius * .42,
         ad->cy + ad->radius * .48, ad->radius * .13, 18, 174, 220, "DISTANCE");
+
+    /* Start live health readings when the watch exposes the sensors. */
+    start_health_sensors(ad);
 
     /* Keep the center reset action easy to hit on the small watch display. */
     ad->hub_touch = evas_object_rectangle_add(canvas);
@@ -334,7 +402,7 @@ static bool app_create(int width, int height, void *data)
     return true;
 }
 
-static void app_terminate(void *data) { (void)data; }
+static void app_terminate(void *data) { stop_health_sensors((appdata_s *)data); }
 static void app_pause(void *data) { (void)data; }
 static void app_resume(void *data) { (void)data; }
 static void app_control(app_control_h control, void *data)
