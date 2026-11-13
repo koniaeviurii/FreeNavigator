@@ -36,7 +36,7 @@ typedef struct {
 
 struct appdata_s {
     Evas_Object *win, *background;
-    Evas_Object *hour_hand, *minute_hand, *second_hand;
+    Evas_Object *hour_hand, *minute_hand, *second_hand;\n    Evas_Object *hour_shadow, *minute_shadow;
     Evas_Object *tick_marks[60];
     Evas_Object *numerals[4];
     Evas_Object *hub_touch, *hub_outer, *hub_inner;
@@ -57,17 +57,36 @@ static void set_hand(Evas_Object *line, int cx, int cy, double angle,
     evas_object_color_set(line, r, g, b, 255);
 }
 
+static void set_hand_shadow(Evas_Object *line, int cx, int cy, double angle,
+                            double length, int width)
+{
+    double a = (angle - 90.0) * PI / 180.0;
+    evas_object_line_xy_set(line, cx + 2, cy + 2,
+        cx + 2 + (int)(cos(a) * length),
+        cy + 2 + (int)(sin(a) * length));
+    evas_object_line_width_set(line, width + 2);
+    evas_object_color_set(line, 0, 0, 0, 125);
+}
+
 static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
 {
     int h = 0, m = 0, s = 0;
+    double hour_angle, minute_angle;
     if (!ad || !wt) return;
     watch_time_get_hour24(wt, &h);
     watch_time_get_minute(wt, &m);
     watch_time_get_second(wt, &s);
 
-    set_hand(ad->hour_hand, ad->cx, ad->cy, (h % 12) * 30.0 + m * .5,
+    hour_angle = (h % 12) * 30.0 + m * .5;
+    minute_angle = m * 6.0 + s * .1;
+
+    set_hand_shadow(ad->hour_shadow, ad->cx, ad->cy, hour_angle,
+                    ad->radius * .43, ambient ? 5 : 8);
+    set_hand_shadow(ad->minute_shadow, ad->cx, ad->cy, minute_angle,
+                    ad->radius * .66, ambient ? 4 : 6);
+    set_hand(ad->hour_hand, ad->cx, ad->cy, hour_angle,
              ad->radius * .43, ambient ? 5 : 8, 224, 235, 247);
-    set_hand(ad->minute_hand, ad->cx, ad->cy, m * 6.0 + s * .1,
+    set_hand(ad->minute_hand, ad->cx, ad->cy, minute_angle,
              ad->radius * .66, ambient ? 4 : 6, 205, 222, 239);
     if (ambient) {
         evas_object_hide(ad->second_hand);
@@ -77,7 +96,6 @@ static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
         evas_object_show(ad->second_hand);
     }
 }
-
 static void create_dial_marks(appdata_s *ad, Evas *canvas)
 {
     int i;
@@ -417,6 +435,8 @@ static bool app_create(int width, int height, void *data)
 
     create_dial_marks(ad, canvas);
 
+    ad->hour_shadow = create_hand(canvas);
+    ad->minute_shadow = create_hand(canvas);
     ad->hour_hand = create_hand(canvas);
     ad->minute_hand = create_hand(canvas);
     ad->second_hand = create_hand(canvas);
@@ -444,6 +464,8 @@ static bool app_create(int width, int height, void *data)
                                    reset_widget_positions, ad);
 
     /* Keep the analog hands visually above the four indicator discs. */
+    evas_object_raise(ad->hour_shadow);
+    evas_object_raise(ad->minute_shadow);
     evas_object_raise(ad->hour_hand);
     evas_object_raise(ad->minute_hand);
     evas_object_raise(ad->second_hand);
