@@ -376,7 +376,7 @@ static void pedometer_event(sensor_h sensor, sensor_event_s *event, void *data)
      * Provisional estimate only: 0.70 m per step.
      * This is not GPS distance and must be user-calibrated before release.
      */
-    snprintf(distance_text, sizeof(distance_text), "DISTANCE\\n~%.2f km",
+    snprintf(distance_text, sizeof(distance_text), "DISTANCE\n~%.2f km",
              (steps * 0.70f) / 1000.0f);
     if (ad && ad->widgets[3].label)
         elm_object_text_set(ad->widgets[3].label, distance_text);
