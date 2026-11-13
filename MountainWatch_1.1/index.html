@@ -11,6 +11,10 @@ svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:9px}label{display:grid;gap:5px;color:#b8c8d8;font-size:12px}select{width:100%;padding:9px;border-radius:8px;background:#080e16;color:#fff;border:1px solid #40556b;font-size:14px}
 .toggles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.toggles label{display:flex;align-items:center;gap:7px;color:#e4edf6;font-size:13px}input{accent-color:var(--blue)}
 .note{max-width:430px;margin:0;color:#9cabb9;font-size:12px;line-height:1.45;text-align:center}
+
+#stepsWidget,#pulseWidget,#batteryWidget,#distanceWidget{cursor:grab;touch-action:none}
+#stepsWidget:active,#pulseWidget:active,#batteryWidget:active,#distanceWidget:active{cursor:grabbing}
+.dragHint{font-size:12px;color:#b8c8d8;text-align:center;margin:0}
 </style></head>
 <body>
 <h1>Mountain Watch · версия 1.1</h1>
@@ -97,6 +101,9 @@ svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%
   <label><input type="checkbox" data-widget="batteryWidget" checked> Батарея</label>
   <label><input type="checkbox" data-widget="distanceWidget" checked> Расстояние</label>
  </div>
+
+ <p class="dragHint">Чтобы переместить кружок, нажмите на него и перетащите пальцем.</p>
+ <button id="resetPositions" type="button">Вернуть кружки на исходные места</button>
 </section>
 <p class="note">Предварительный визуальный макет Mountain Watch 1.1. Показания датчиков демонстрационные. Это ещё не установочный файл TPK для Galaxy Watch SM‑R800.</p>
 <script>
@@ -106,5 +113,16 @@ document.querySelectorAll('[data-widget]').forEach(c=>c.addEventListener('change
 const themes={blue:['#12aaff','#087bd0'],gold:['#ffc15c','#a96819'],violet:['#c38aff','#7042ad'],silver:['#e4efff','#8097b0'],green:['#7de68a','#278d48'],turquoise:['#65e6dc','#168f91']};
 document.getElementById('palette').addEventListener('change',e=>{let p=themes[e.target.value];document.documentElement.style.setProperty('--blue',p[0]);document.documentElement.style.setProperty('--glow',p[1]);document.querySelectorAll('#ticks line').forEach(x=>x.setAttribute('stroke',p[0]));document.querySelectorAll('#hands path:last-of-type').forEach(x=>x.setAttribute('stroke',p[0]));document.querySelectorAll('#stepsWidget circle:nth-child(2),#distanceWidget circle:nth-child(2)').forEach(x=>x.setAttribute('stroke',p[0]));});
 document.getElementById('style').addEventListener('change',e=>{const l=document.getElementById('landscape');l.style.filter=e.target.value==='art'?'saturate(1.6) contrast(1.12)':e.target.value==='line'?'grayscale(1) contrast(1.8)':'none';});
+
+const defaultPositions={stepsWidget:[87,174],pulseWidget:[273,174],batteryWidget:[105,278],distanceWidget:[180,291]};
+const savedPositions=(()=>{try{return JSON.parse(localStorage.getItem('mountainWatchPositions')||'{}')}catch(_){return {}}})();
+function setWidgetPosition(id,x,y){const g=document.getElementById(id);g.setAttribute('transform',`translate(${x} ${y})`)}
+Object.entries(defaultPositions).forEach(([id,pos])=>{const p=savedPositions[id];if(Array.isArray(p)&&p.length===2&&p.every(Number.isFinite))setWidgetPosition(id,p[0],p[1])});
+let dragging=null;
+function svgPoint(evt){const pt=document.querySelector('svg').createSVGPoint();pt.x=evt.clientX;pt.y=evt.clientY;return pt.matrixTransform(document.querySelector('svg').getScreenCTM().inverse())}
+function clampWidget(x,y,id){const radius=id==='stepsWidget'||id==='pulseWidget'?48:id==='distanceWidget'?38:31;const max=170-radius-3;const dx=x-180,dy=y-180,len=Math.hypot(dx,dy);if(len>max){x=180+dx/len*max;y=180+dy/len*max}return [Math.max(radius+5,Math.min(360-radius-5,x)),Math.max(radius+5,Math.min(360-radius-5,y))]}
+Object.keys(defaultPositions).forEach(id=>{const g=document.getElementById(id);g.addEventListener('pointerdown',e=>{e.preventDefault();g.setPointerCapture(e.pointerId);const p=svgPoint(e);const m=(g.getAttribute('transform')||'').match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);const x=m?Number(m[1]):defaultPositions[id][0],y=m?Number(m[2]):defaultPositions[id][1];dragging={id,dx:x-p.x,dy:y-p.y}});g.addEventListener('pointermove',e=>{if(!dragging||dragging.id!==id)return;const p=svgPoint(e),xy=clampWidget(p.x+dragging.dx,p.y+dragging.dy,id);setWidgetPosition(id,xy[0],xy[1])});const stop=()=>{if(dragging&&dragging.id===id){const m=(g.getAttribute('transform')||'').match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);if(m){savedPositions[id]=[Number(m[1]),Number(m[2])];try{localStorage.setItem('mountainWatchPositions',JSON.stringify(savedPositions))}catch(_){}}dragging=null}};g.addEventListener('pointerup',stop);g.addEventListener('pointercancel',stop)});
+document.getElementById('resetPositions').addEventListener('click',()=>{Object.entries(defaultPositions).forEach(([id,p])=>setWidgetPosition(id,p[0],p[1]));try{localStorage.removeItem('mountainWatchPositions')}catch(_){}});
+
 function clock(){const d=new Date();document.getElementById('date').textContent=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'}).toUpperCase();document.getElementById('weekday').textContent=d.toLocaleDateString('ru-RU',{weekday:'long'}).toUpperCase()}clock();
 </script></body></html>
