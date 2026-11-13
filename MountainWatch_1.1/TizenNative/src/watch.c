@@ -281,10 +281,22 @@ static void hrm_event(sensor_h sensor, sensor_event_s *event, void *data)
 static void pedometer_event(sensor_h sensor, sensor_event_s *event, void *data)
 {
     appdata_s *ad = data;
+    int steps;
+    char distance_text[48];
     (void)sensor;
-    if (!event || event->value_count < 1) return;
-    if (event->values[0] >= 0)
-        update_sensor_label(ad, 0, "STEPS", (int)(event->values[0] + 0.5f));
+    if (!event || event->value_count < 1 || event->values[0] < 0) return;
+
+    steps = (int)(event->values[0] + 0.5f);
+    update_sensor_label(ad, 0, "STEPS", steps);
+
+    /*
+     * Provisional estimate only: 0.70 m per step.
+     * This is not GPS distance and must be user-calibrated before release.
+     */
+    snprintf(distance_text, sizeof(distance_text), "ABOUT %.2f km",
+             (steps * 0.70f) / 1000.0f);
+    if (ad && ad->widgets[3].label)
+        elm_object_text_set(ad->widgets[3].label, distance_text);
 }
 
 static void start_health_sensors(appdata_s *ad)
