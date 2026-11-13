@@ -503,7 +503,8 @@ static bool app_create(int width, int height, void *data)
     evas_object_resize(ad->background, width, height);
     evas_object_show(ad->background);
 
-    create_dial_bezel(ad, canvas);\n    create_dial_marks(ad, canvas);
+    create_dial_bezel(ad, canvas);
+    create_dial_marks(ad, canvas);
 
     ad->hour_shadow = create_hand(canvas);
     ad->minute_shadow = create_hand(canvas);
