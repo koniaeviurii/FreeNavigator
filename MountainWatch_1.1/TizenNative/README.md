@@ -7,7 +7,7 @@ Target: Samsung Galaxy Watch SM-R800 (Tizen 4.0, wearable).
 This directory is the beginning of the native C watch application. It is **not yet a finished watch face** and does not contain a signed `.tpk` package.
 
 Current source:
-- `src/watch.c` — native watch lifecycle, analog hour/minute/seconds hands, ambient-mode updates, four separate touch-drag widget targets, persistent widget positions/colors, live battery percentage, and sensor listeners for heart rate and steps when supported by the watch.
+- `src/watch.c` — native watch lifecycle, analog hour/minute/seconds hands, ambient-mode updates, four separate touch-drag widget targets, persistent widget positions/colors, live battery percentage, sensor listeners for heart rate and steps when supported by the watch, and a clearly approximate distance estimate derived from steps.
 - `tizen-manifest.xml` — wearable application manifest.
 
 ## Required build environment
@@ -22,9 +22,9 @@ https://developer.samsung.com/galaxy-watch-tizen/creating-your-first-app/native-
 1. Import the approved dial artwork as a resource and split it into independent layers. The current C source draws a temporary dark-background prototype with three hands and four independently draggable circular touch targets; it does not yet render the approved photographic face. The four widgets must be movable independently; hands, numerals and the rest of the dial remain fixed. Dragging a widget saves its position; tapping the central hub resets all four positions.
 2. Draw the approved metallic hour/minute hands and thin seconds hand without duplicating them.
 3. Implement independent color settings and persistent positions for the bezel/dial, hands, each of the four widgets, and the landscape. The four prototype widgets currently have separate base colors. Their positions are stored with the Tizen application preference API when a drag ends and restored when the watch app starts. The central reset target has a larger invisible touch area so it is easier to activate. Tapping an indicator cycles its individual color through five preset colors and saves that choice. Tapping the central hub restores the four default positions. A full graphical color picker is not implemented yet.
-4. Battery percentage is read from the Tizen Battery API. Heart-rate and pedometer listeners are now wired through the Tizen Sensor API and the manifest includes the healthinfo privilege. Their availability and event values still require verification on the SM-R800. Distance and weather need a defined data source/companion connection.
+4. Battery percentage is read from the Tizen Battery API. Heart-rate and pedometer listeners are wired through the Tizen Sensor API and the manifest includes the healthinfo privilege. The distance circle currently displays an estimate based on 0.70 m per step; it is not GPS distance and needs calibration. Sensor availability, event values and readings still require verification on the SM-R800. Weather needs a defined data source/companion connection.
 5. Add low-power ambient rendering and verify performance on the SM-R800.
-6. Build, sign and test the `.tpk` on the actual watch. Compilation has not yet been verified because the Tizen 4.0 SDK/toolchain is not available in this environment.
+6. Health sensor listeners are stopped while the watch is paused or in ambient mode to reduce power use, and are restarted when active. Build, sign and test the `.tpk` on the actual watch. Compilation has not yet been verified because the Tizen 4.0 SDK/toolchain is not available in this environment.
 
 ## Important
 
