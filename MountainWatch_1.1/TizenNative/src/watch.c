@@ -304,7 +304,8 @@ static void start_health_sensors(appdata_s *ad)
     bool supported = false;
     if (!ad) return;
 
-    if (sensor_is_supported(SENSOR_HRM, &supported) == SENSOR_ERROR_NONE && supported &&
+    if (!ad->hrm_listener &&
+        sensor_is_supported(SENSOR_HRM, &supported) == SENSOR_ERROR_NONE && supported &&
         sensor_get_default_sensor(SENSOR_HRM, &ad->hrm_sensor) == SENSOR_ERROR_NONE &&
         sensor_create_listener(ad->hrm_sensor, &ad->hrm_listener) == SENSOR_ERROR_NONE) {
         if (sensor_listener_set_event_cb(ad->hrm_listener, 1000, hrm_event, ad) == SENSOR_ERROR_NONE)
@@ -312,7 +313,8 @@ static void start_health_sensors(appdata_s *ad)
     }
 
     supported = false;
-    if (sensor_is_supported(SENSOR_HUMAN_PEDOMETER, &supported) == SENSOR_ERROR_NONE && supported &&
+    if (!ad->pedometer_listener &&
+        sensor_is_supported(SENSOR_HUMAN_PEDOMETER, &supported) == SENSOR_ERROR_NONE && supported &&
         sensor_get_default_sensor(SENSOR_HUMAN_PEDOMETER, &ad->pedometer_sensor) == SENSOR_ERROR_NONE &&
         sensor_create_listener(ad->pedometer_sensor, &ad->pedometer_listener) == SENSOR_ERROR_NONE) {
         if (sensor_listener_set_event_cb(ad->pedometer_listener, 1000, pedometer_event, ad) == SENSOR_ERROR_NONE)
