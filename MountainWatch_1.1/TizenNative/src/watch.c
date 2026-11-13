@@ -162,6 +162,7 @@ static Evas_Object *create_dial_circle(Evas *canvas, int cx, int cy,
     }
     evas_object_color_set(circle, red, green, blue, alpha);
     evas_object_move(circle, cx - radius, cy - radius);
+    evas_object_resize(circle, radius * 2, radius * 2);
     evas_object_show(circle);
     return circle;
 }
@@ -437,6 +438,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
             radius + (int)(sin(a) * radius));
     }
     evas_object_move(w->disc, x - radius, y - radius);
+    evas_object_resize(w->disc, radius * 2, radius * 2);
     evas_object_show(w->disc);
     widget_apply_color(w);
 
@@ -452,6 +454,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     evas_object_color_set(w->disc_gloss, 255, 255, 255, 58);
     evas_object_move(w->disc_gloss,
         x - (int)(radius * .62), y - (int)(radius * .72));
+    evas_object_resize(w->disc_gloss, gloss_r * 2, gloss_r * 2);
     evas_object_show(w->disc_gloss);
     evas_object_pass_events_set(w->disc_gloss, EINA_TRUE);
 
@@ -468,6 +471,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     evas_object_color_set(w->disc_glint, 255, 255, 255, 105);
     evas_object_move(w->disc_glint,
         x - (int)(radius * .48), y - (int)(radius * .78));
+    evas_object_resize(w->disc_glint, glint_rx * 2, glint_ry * 2);
     evas_object_show(w->disc_glint);
     evas_object_pass_events_set(w->disc_glint, EINA_TRUE);
 
