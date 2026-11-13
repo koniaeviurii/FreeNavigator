@@ -60,15 +60,34 @@ static void set_hand(Evas_Object *line, int cx, int cy, double angle,
     evas_object_color_set(line, r, g, b, 255);
 }
 
-static void set_hand_shadow(Evas_Object *line, int cx, int cy, double angle,
-                            double length, int width)
+/* Build a tapered, filled metal hand from the pivot to its tip. */
+static void set_hand_polygon(Evas_Object *hand, int cx, int cy, double angle,
+                             double length, int width, int r, int g, int b,
+                             int offset)
 {
     double a = (angle - 90.0) * PI / 180.0;
-    evas_object_line_xy_set(line, cx + 2, cy + 2,
-        cx + 2 + (int)(cos(a) * length),
-        cy + 2 + (int)(sin(a) * length));
-    evas_object_line_width_set(line, width + 2);
-    evas_object_color_set(line, 0, 0, 0, 125);
+    double px = -sin(a), py = cos(a);
+    double half = width / 2.0;
+    double bx = cx + offset, by = cy + offset;
+    double tx = bx + cos(a) * length, ty = by + sin(a) * length;
+    double shoulder = length * 0.72;
+    if (!hand) return;
+    evas_object_polygon_point_clear(hand);
+    evas_object_polygon_point_add(hand, (int)(bx + px * half), (int)(by + py * half));
+    evas_object_polygon_point_add(hand, (int)(bx + px * half * 0.62 + cos(a) * shoulder),
+                                  (int)(by + py * half * 0.62 + sin(a) * shoulder));
+    evas_object_polygon_point_add(hand, (int)(tx + px * 1.0), (int)(ty + py * 1.0));
+    evas_object_polygon_point_add(hand, (int)(tx - px * 1.0), (int)(ty - py * 1.0));
+    evas_object_polygon_point_add(hand, (int)(bx - px * half * 0.62 + cos(a) * shoulder),
+                                  (int)(by - py * half * 0.62 + sin(a) * shoulder));
+    evas_object_polygon_point_add(hand, (int)(bx - px * half), (int)(by - py * half));
+    evas_object_color_set(hand, r, g, b, 255);
+}
+
+static void set_hand_shadow(Evas_Object *hand, int cx, int cy, double angle,
+                            double length, int width)
+{
+    set_hand_polygon(hand, cx, cy, angle, length, width + 2, 0, 0, 0, 2);
 }
 
 static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
@@ -87,10 +106,10 @@ static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
                     ad->radius * .43, ambient ? 5 : 8);
     set_hand_shadow(ad->minute_shadow, ad->cx, ad->cy, minute_angle,
                     ad->radius * .66, ambient ? 4 : 6);
-    set_hand(ad->hour_hand, ad->cx, ad->cy, hour_angle,
-             ad->radius * .43, ambient ? 5 : 8, 224, 235, 247);
-    set_hand(ad->minute_hand, ad->cx, ad->cy, minute_angle,
-             ad->radius * .66, ambient ? 4 : 6, 205, 222, 239);
+    set_hand_polygon(ad->hour_hand, ad->cx, ad->cy, hour_angle,
+                     ad->radius * .43, ambient ? 5 : 9, 224, 235, 247, 0);
+    set_hand_polygon(ad->minute_hand, ad->cx, ad->cy, minute_angle,
+                     ad->radius * .66, ambient ? 4 : 7, 205, 222, 239, 0);
     if (ambient) {
         evas_object_hide(ad->second_hand);
     } else {
@@ -173,6 +192,14 @@ static void create_dial_marks(appdata_s *ad, Evas *canvas)
 }
 
 static Evas_Object *create_hand(Evas *canvas)
+{
+    Evas_Object *o = evas_object_polygon_add(canvas);
+    evas_object_color_set(o, 220, 230, 242, 255);
+    evas_object_show(o);
+    return o;
+}
+
+static Evas_Object *create_second_hand(Evas *canvas)
 {
     Evas_Object *o = evas_object_line_add(canvas);
     evas_object_line_xy_set(o, 0, 0, 0, 0);
@@ -510,7 +537,7 @@ static bool app_create(int width, int height, void *data)
     ad->minute_shadow = create_hand(canvas);
     ad->hour_hand = create_hand(canvas);
     ad->minute_hand = create_hand(canvas);
-    ad->second_hand = create_hand(canvas);
+    ad->second_hand = create_second_hand(canvas);
 
     /* Four separate touch targets; each has its own position and base color. */
     create_widget(ad, canvas, 0, ad->cx - ad->radius * .53,
