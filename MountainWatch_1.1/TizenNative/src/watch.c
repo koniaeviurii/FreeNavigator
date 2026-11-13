@@ -570,6 +570,13 @@ static bool app_create(int width, int height, void *data)
     create_widget(ad, canvas, 3, ad->cx + ad->radius * .42,
         ad->cy + ad->radius * .48, ad->radius * .13, 18, 174, 220, "DISTANCE");
 
+    /* Keep fixed cardinal numerals readable above the movable indicators. */
+    {
+        int i;
+        for (i = 0; i < 4; i++)
+            if (ad->numerals[i]) evas_object_raise(ad->numerals[i]);
+    }
+
     /* Start live health readings when the watch exposes the sensors. */
     start_health_sensors(ad);
 
