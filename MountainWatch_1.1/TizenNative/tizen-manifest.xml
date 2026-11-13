@@ -5,10 +5,12 @@
           version="1.1.0">
   <profile name="wearable"/>
   <feature name="http://tizen.org/feature/battery"/>
-  <privilege name="http://tizen.org/privilege/healthinfo"/>
   <watch-application appid="MW11000001.MountainWatch"
                      exec="MountainWatch"
                      ambient-support="true">
     <label>Mountain Watch 1.1</label>
   </watch-application>
+  <privileges>
+    <privilege>http://tizen.org/privilege/healthinfo</privilege>
+  </privileges>
 </manifest>
