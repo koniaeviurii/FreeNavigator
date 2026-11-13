@@ -7,7 +7,7 @@ Target: Samsung Galaxy Watch SM-R800 (Tizen 4.0, wearable).
 This directory is the beginning of the native C watch application. It is **not yet a finished watch face** and does not contain a signed `.tpk` package.
 
 Current source:
-- `src/watch.c` — native watch application lifecycle and clock tick callbacks.
+- `src/watch.c` — native watch lifecycle, analog hour/minute/seconds hands, and ambient-mode updates.
 - `tizen-manifest.xml` — wearable application manifest.
 
 ## Required build environment
@@ -19,12 +19,12 @@ https://developer.samsung.com/galaxy-watch-tizen/creating-your-first-app/native-
 
 ## Next implementation tasks
 
-1. Import the approved dial artwork as a resource and split it into independent layers. The four widgets must be movable independently; hands, numerals and the rest of the dial remain fixed.
+1. Import the approved dial artwork as a resource and split it into independent layers. The current C source draws only a temporary native analog-hand prototype on a dark background; it does not yet render the approved photographic face. The four widgets must be movable independently; hands, numerals and the rest of the dial remain fixed.
 2. Draw the approved metallic hour/minute hands and thin seconds hand without duplicating them.
 3. Implement independent color settings for the bezel/dial, hands, each of the four widgets, and the landscape.
 4. Connect supported watch data sources for steps, heart rate and battery. Distance and weather need a defined data source/companion connection.
 5. Add low-power ambient rendering and verify performance on the SM-R800.
-6. Build, sign and test the `.tpk` on the actual watch.
+6. Build, sign and test the `.tpk` on the actual watch. Compilation has not yet been verified because the Tizen 4.0 SDK/toolchain is not available in this environment.
 
 ## Important
 
