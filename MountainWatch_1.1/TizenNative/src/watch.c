@@ -415,8 +415,8 @@ static bool app_create(int width, int height, void *data)
 }
 
 static void app_terminate(void *data) { stop_health_sensors((appdata_s *)data); }
-static void app_pause(void *data) { (void)data; }
-static void app_resume(void *data) { (void)data; }
+static void app_pause(void *data) { stop_health_sensors((appdata_s *)data); }
+static void app_resume(void *data) { start_health_sensors((appdata_s *)data); }
 static void app_control(app_control_h control, void *data)
 { (void)control; (void)data; }
 
@@ -439,6 +439,9 @@ static void app_ambient_changed(bool ambient_mode, void *data)
     watch_time_h wt = NULL;
     if (!ad) return;
     ad->ambient = ambient_mode;
+    /* Pause continuous health sampling in low-power ambient mode. */
+    if (ambient_mode) stop_health_sensors(ad);
+    else start_health_sensors(ad);
     if (watch_time_get_current_time(&wt) == APP_ERROR_NONE) {
         update_watch(ad, wt, ambient_mode);
         watch_time_delete(wt);
