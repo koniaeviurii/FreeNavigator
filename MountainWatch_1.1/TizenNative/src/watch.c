@@ -254,7 +254,7 @@ static void refresh_battery_widget(appdata_s *ad)
         percent < 0 || percent > 100) return;
     w = &ad->widgets[2];
     if (!w->label) return;
-    snprintf(text, sizeof(text), "BATTERY\\n%d%%", percent);
+    snprintf(text, sizeof(text), "BATTERY\n%d%%", percent);
     elm_object_text_set(w->label, text);
 }
 
