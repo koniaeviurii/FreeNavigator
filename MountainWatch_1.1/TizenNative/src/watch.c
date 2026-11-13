@@ -36,7 +36,8 @@ typedef struct {
 
 struct appdata_s {
     Evas_Object *win, *background;
-    Evas_Object *hour_hand, *minute_hand, *second_hand;\n    Evas_Object *hour_shadow, *minute_shadow;
+    Evas_Object *hour_hand, *minute_hand, *second_hand;
+    Evas_Object *hour_shadow, *minute_shadow;
     Evas_Object *tick_marks[60];
     Evas_Object *numerals[4];
     Evas_Object *hub_touch, *hub_outer, *hub_inner;
