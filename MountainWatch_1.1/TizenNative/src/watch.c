@@ -25,6 +25,7 @@ typedef struct {
     appdata_s *app;
     Evas_Object *disc;
     Evas_Object *disc_gloss;
+    Evas_Object *disc_glint;
     Evas_Object *label;
     int x, y, radius;
     int red, green, blue;
@@ -193,6 +194,7 @@ static void widget_move(widget_s *w, int x, int y)
 {
     evas_object_move(w->disc, x - w->radius, y - w->radius);
     if (w->disc_gloss) evas_object_move(w->disc_gloss, x - (int)(w->radius * .62), y - (int)(w->radius * .72));
+    if (w->disc_glint) evas_object_move(w->disc_glint, x - (int)(w->radius * .48), y - (int)(w->radius * .78));
     evas_object_move(w->label, x - w->radius, y - 18);
     /* The polygon is built in local coordinates; moving its object moves it. */
     w->x = x;
@@ -315,6 +317,22 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
         x - (int)(radius * .62), y - (int)(radius * .72));
     evas_object_show(w->disc_gloss);
     evas_object_pass_events_set(w->disc_gloss, EINA_TRUE);
+
+    /* Tiny specular glint at the upper edge, part of the movable widget. */
+    w->disc_glint = evas_object_polygon_add(canvas);
+    for (i = 0; i < WIDGET_POINTS; i++) {
+        double a = 2.0 * PI * i / WIDGET_POINTS;
+        int glint_rx = (int)(radius * .13);
+        int glint_ry = (int)(radius * .055);
+        evas_object_polygon_point_add(w->disc_glint,
+            glint_rx + (int)(cos(a) * glint_rx),
+            glint_ry + (int)(sin(a) * glint_ry));
+    }
+    evas_object_color_set(w->disc_glint, 255, 255, 255, 105);
+    evas_object_move(w->disc_glint,
+        x - (int)(radius * .48), y - (int)(radius * .78));
+    evas_object_show(w->disc_glint);
+    evas_object_pass_events_set(w->disc_glint, EINA_TRUE);
 
     w->label = elm_label_add(ad->win);
     elm_object_text_set(w->label, caption);
