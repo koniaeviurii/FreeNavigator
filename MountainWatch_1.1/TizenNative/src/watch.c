@@ -71,16 +71,37 @@ static void set_hand_polygon(Evas_Object *hand, int cx, int cy, double angle,
     double bx = cx + offset, by = cy + offset;
     double tx = bx + cos(a) * length, ty = by + sin(a) * length;
     double shoulder = length * 0.72;
+    int pxs[6], pys[6], min_x, min_y, max_x, max_y, i;
     if (!hand) return;
+
+    pxs[0] = (int)(bx + px * half);
+    pys[0] = (int)(by + py * half);
+    pxs[1] = (int)(bx + px * half * 0.62 + cos(a) * shoulder);
+    pys[1] = (int)(by + py * half * 0.62 + sin(a) * shoulder);
+    pxs[2] = (int)(tx + px);
+    pys[2] = (int)(ty + py);
+    pxs[3] = (int)(tx - px);
+    pys[3] = (int)(ty - py);
+    pxs[4] = (int)(bx - px * half * 0.62 + cos(a) * shoulder);
+    pys[4] = (int)(by - py * half * 0.62 + sin(a) * shoulder);
+    pxs[5] = (int)(bx - px * half);
+    pys[5] = (int)(by - py * half);
+
+    min_x = max_x = pxs[0];
+    min_y = max_y = pys[0];
+    for (i = 1; i < 6; i++) {
+        if (pxs[i] < min_x) min_x = pxs[i];
+        if (pxs[i] > max_x) max_x = pxs[i];
+        if (pys[i] < min_y) min_y = pys[i];
+        if (pys[i] > max_y) max_y = pys[i];
+    }
+
+    /* Evas polygon vertices are local to the object's geometry. */
     evas_object_polygon_point_clear(hand);
-    evas_object_polygon_point_add(hand, (int)(bx + px * half), (int)(by + py * half));
-    evas_object_polygon_point_add(hand, (int)(bx + px * half * 0.62 + cos(a) * shoulder),
-                                  (int)(by + py * half * 0.62 + sin(a) * shoulder));
-    evas_object_polygon_point_add(hand, (int)(tx + px * 1.0), (int)(ty + py * 1.0));
-    evas_object_polygon_point_add(hand, (int)(tx - px * 1.0), (int)(ty - py * 1.0));
-    evas_object_polygon_point_add(hand, (int)(bx - px * half * 0.62 + cos(a) * shoulder),
-                                  (int)(by - py * half * 0.62 + sin(a) * shoulder));
-    evas_object_polygon_point_add(hand, (int)(bx - px * half), (int)(by - py * half));
+    for (i = 0; i < 6; i++)
+        evas_object_polygon_point_add(hand, pxs[i] - min_x, pys[i] - min_y);
+    evas_object_move(hand, min_x, min_y);
+    evas_object_resize(hand, max_x - min_x + 1, max_y - min_y + 1);
     evas_object_color_set(hand, r, g, b, 255);
 }
 
