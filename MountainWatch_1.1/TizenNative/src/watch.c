@@ -540,19 +540,13 @@ static bool app_create(int width, int height, void *data)
     evas_object_raise(ad->minute_hand);
     evas_object_raise(ad->second_hand);
 
-    ad->hub_outer = evas_object_rectangle_add(canvas);
-    evas_object_color_set(ad->hub_outer, 220, 235, 248, 255);
-    evas_object_resize(ad->hub_outer, 12, 12);
-    evas_object_move(ad->hub_outer, ad->cx - 6, ad->cy - 6);
-    evas_object_show(ad->hub_outer);
-    /* Tap the central hub to restore all four indicators to their defaults. */
+    ad->hub_outer = create_dial_circle(canvas, ad->cx, ad->cy, 7,
+                                       220, 235, 248, 255);
+    /* Tap the circular central hub to restore all four indicators. */
     evas_object_event_callback_add(ad->hub_outer, EVAS_CALLBACK_MOUSE_UP,
                                    reset_widget_positions, ad);
-    ad->hub_inner = evas_object_rectangle_add(canvas);
-    evas_object_color_set(ad->hub_inner, 0, 174, 255, 255);
-    evas_object_resize(ad->hub_inner, 5, 5);
-    evas_object_move(ad->hub_inner, ad->cx - 2, ad->cy - 2);
-    evas_object_show(ad->hub_inner);
+    ad->hub_inner = create_dial_circle(canvas, ad->cx, ad->cy, 3,
+                                       0, 174, 255, 255);
     evas_object_pass_events_set(ad->hub_inner, EINA_TRUE);
 
     refresh_battery_widget(ad);
