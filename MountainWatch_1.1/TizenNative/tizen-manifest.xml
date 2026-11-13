@@ -4,6 +4,7 @@
           api-version="4.0.0"
           version="1.1.0">
   <profile name="wearable"/>
+  <feature name="http://tizen.org/feature/battery"/>
   <watch-application appid="MW11000001.MountainWatch"
                      exec="MountainWatch"
                      ambient-support="true">
