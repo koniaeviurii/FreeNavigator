@@ -33,9 +33,15 @@ jobs:
             -o /tmp/tizen-cli.bin
           chmod +x /tmp/tizen-cli.bin
 
+      - name: Install virtual display for archived GUI installer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install Tizen Studio 4.0 baseline
         run: |
-          /tmp/tizen-cli.bin --accept-license --no-java-check "$HOME/tizen-studio"
+          mkdir -p "$HOME/tizen-studio"
+          xvfb-run -a /tmp/tizen-cli.bin --accept-license --no-java-check "$HOME/tizen-studio"
 
       - name: Check Wearable 4.0 native packages in the archived baseline
         run: |
