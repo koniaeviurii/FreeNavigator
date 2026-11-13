@@ -293,6 +293,7 @@ static bool app_create(int width, int height, void *data)
     evas_object_resize(ad->hub_inner, 5, 5);
     evas_object_move(ad->hub_inner, ad->cx - 2, ad->cy - 2);
     evas_object_show(ad->hub_inner);
+    evas_object_pass_events_set(ad->hub_inner, EINA_TRUE);
 
     if (watch_time_get_current_time(&wt) == APP_ERROR_NONE) {
         update_watch(ad, wt, false);
