@@ -42,12 +42,12 @@ jobs:
           PM="$HOME/tizen-studio/package-manager/package-manager-cli.bin"
           "$PM" show-pkgs --tree | tee /tmp/tizen-packages.txt
           echo "Checking the archived Wearable 4.0 package catalogue..."
-          if ! grep -q 'WEARABLE-4\\.0.*Native' /tmp/tizen-packages.txt; then
+          if ! grep -q 'WEARABLE-4[.]0.*Native' /tmp/tizen-packages.txt; then
             echo "::error::The complete baseline did not expose the Wearable 4.0 native toolchain."
             echo "The workflow will stop here rather than attempting a misleading build."
             exit 1
           fi
-          grep -E 'WEARABLE-4\\.0.*Native|wearable-4\\.0' /tmp/tizen-packages.txt
+          grep -E 'WEARABLE-4[.]0.*Native|wearable-4[.]0' /tmp/tizen-packages.txt
 
       - name: Generate a clean native Watch project
         run: |
