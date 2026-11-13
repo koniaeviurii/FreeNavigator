@@ -1,10 +1,8 @@
 /*
  * Mountain Watch 1.1 — native Tizen 4.0 watch application
  * Target: Samsung Galaxy Watch SM-R800.
- *
- * Native rendering foundation: three analog hands only (hour, minute,
- * seconds). Approved photographic artwork and movable widget layers are
- * separate assets and are not yet integrated in this source.
+ * Current native prototype: analog clock and four independently draggable
+ * circular indicators. Approved photo artwork and sensor data are pending.
  */
 #include <watch_app.h>
 #include <app.h>
@@ -16,71 +14,147 @@
 
 #define LOG_TAG "MOUNTAIN_WATCH"
 #define PI 3.14159265358979323846
+#define WIDGET_COUNT 4
+#define WIDGET_POINTS 48
 
+typedef struct appdata_s appdata_s;
 typedef struct {
-    Evas_Object *win;
-    Evas_Object *background;
-    Evas_Object *hour_hand;
-    Evas_Object *minute_hand;
-    Evas_Object *second_hand;
-    Evas_Object *hub_outer;
-    Evas_Object *hub_inner;
-    int width;
-    int height;
-    int cx;
-    int cy;
-    int radius;
+    appdata_s *app;
+    Evas_Object *disc;
+    Evas_Object *label;
+    int x, y, radius;
+    int red, green, blue;
+    int drag_dx, drag_dy;
+    bool dragging;
+    const char *caption;
+} widget_s;
+
+struct appdata_s {
+    Evas_Object *win, *background;
+    Evas_Object *hour_hand, *minute_hand, *second_hand;
+    Evas_Object *hub_outer, *hub_inner;
+    int width, height, cx, cy, radius;
     bool ambient;
-} appdata_s;
+    widget_s widgets[WIDGET_COUNT];
+};
 
 static void set_hand(Evas_Object *line, int cx, int cy, double angle,
                      double length, int width, int r, int g, int b)
 {
-    double radians = (angle - 90.0) * PI / 180.0;
-    int x2 = cx + (int)(cos(radians) * length);
-    int y2 = cy + (int)(sin(radians) * length);
-    evas_object_line_xy_set(line, cx, cy, x2, y2);
+    double a = (angle - 90.0) * PI / 180.0;
+    evas_object_line_xy_set(line, cx, cy,
+        cx + (int)(cos(a) * length), cy + (int)(sin(a) * length));
     evas_object_line_width_set(line, width);
     evas_object_color_set(line, r, g, b, 255);
 }
 
 static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
 {
-    int hour = 0, minute = 0, second = 0;
-    double second_angle, minute_angle, hour_angle;
-
+    int h = 0, m = 0, s = 0;
     if (!ad || !wt) return;
-    watch_time_get_hour24(wt, &hour);
-    watch_time_get_minute(wt, &minute);
-    watch_time_get_second(wt, &second);
+    watch_time_get_hour24(wt, &h);
+    watch_time_get_minute(wt, &m);
+    watch_time_get_second(wt, &s);
 
-    second_angle = second * 6.0;
-    minute_angle = minute * 6.0 + second * 0.1;
-    hour_angle = (hour % 12) * 30.0 + minute * 0.5;
-
-    /* The two broad metallic hands and one thin blue seconds hand. */
-    set_hand(ad->hour_hand, ad->cx, ad->cy, hour_angle,
-             ad->radius * 0.43, ambient ? 5 : 8, 224, 235, 247);
-    set_hand(ad->minute_hand, ad->cx, ad->cy, minute_angle,
-             ad->radius * 0.66, ambient ? 4 : 6, 205, 222, 239);
-
+    set_hand(ad->hour_hand, ad->cx, ad->cy, (h % 12) * 30.0 + m * .5,
+             ad->radius * .43, ambient ? 5 : 8, 224, 235, 247);
+    set_hand(ad->minute_hand, ad->cx, ad->cy, m * 6.0 + s * .1,
+             ad->radius * .66, ambient ? 4 : 6, 205, 222, 239);
     if (ambient) {
         evas_object_hide(ad->second_hand);
     } else {
-        set_hand(ad->second_hand, ad->cx, ad->cy, second_angle,
-                 ad->radius * 0.78, 2, 0, 174, 255);
+        set_hand(ad->second_hand, ad->cx, ad->cy, s * 6.0,
+                 ad->radius * .78, 2, 0, 174, 255);
         evas_object_show(ad->second_hand);
     }
 }
 
-static Evas_Object *create_hand(Evas *canvas, int r, int g, int b, int width)
+static Evas_Object *create_hand(Evas *canvas)
 {
-    Evas_Object *line = evas_object_line_add(canvas);
-    evas_object_color_set(line, r, g, b, 255);
-    evas_object_line_width_set(line, width);
-    evas_object_line_xy_set(line, 0, 0, 0, 0);
-    evas_object_show(line);
-    return line;
+    Evas_Object *o = evas_object_line_add(canvas);
+    evas_object_line_xy_set(o, 0, 0, 0, 0);
+    evas_object_show(o);
+    return o;
+}
+
+static void widget_move(widget_s *w, int x, int y)
+{
+    int i;
+    evas_object_move(w->disc, x - w->radius, y - w->radius);
+    evas_object_move(w->label, x - w->radius, y - 10);
+    /* The polygon is built in local coordinates; moving its object moves it. */
+    w->x = x;
+    w->y = y;
+    (void)i;
+}
+
+static void widget_down(void *data, Evas *e, Evas_Object *obj, void *event)
+{
+    widget_s *w = data;
+    Evas_Event_Mouse_Down *ev = event;
+    (void)e; (void)obj;
+    if (!w || !ev) return;
+    w->drag_dx = w->x - ev->output.x;
+    w->drag_dy = w->y - ev->output.y;
+    w->dragging = true;
+}
+
+static void widget_move_event(void *data, Evas *e, Evas_Object *obj, void *event)
+{
+    widget_s *w = data;
+    Evas_Event_Mouse_Move *ev = event;
+    int x, y, maxr;
+    (void)e; (void)obj;
+    if (!w || !ev || !w->dragging) return;
+    x = ev->cur.output.x + w->drag_dx;
+    y = ev->cur.output.y + w->drag_dy;
+    maxr = (w->app->width < w->app->height ?
+            w->app->width : w->app->height) / 2 - w->radius - 8;
+    if (x < w->app->cx - maxr) x = w->app->cx - maxr;
+    if (x > w->app->cx + maxr) x = w->app->cx + maxr;
+    if (y < w->app->cy - maxr) y = w->app->cy - maxr;
+    if (y > w->app->cy + maxr) y = w->app->cy + maxr;
+    widget_move(w, x, y);
+}
+
+static void widget_up(void *data, Evas *e, Evas_Object *obj, void *event)
+{
+    widget_s *w = data;
+    (void)e; (void)obj; (void)event;
+    if (w) w->dragging = false;
+}
+
+static void create_widget(appdata_s *ad, Evas *canvas, int index,
+                          int x, int y, int radius, int red, int green,
+                          int blue, const char *caption)
+{
+    widget_s *w = &ad->widgets[index];
+    int i;
+    w->app = ad;
+    w->x = x; w->y = y; w->radius = radius;
+    w->red = red; w->green = green; w->blue = blue;
+    w->caption = caption;
+    w->disc = evas_object_polygon_add(canvas);
+    evas_object_color_set(w->disc, red, green, blue, 220);
+    for (i = 0; i < WIDGET_POINTS; i++) {
+        double a = 2.0 * PI * i / WIDGET_POINTS;
+        evas_object_polygon_point_add(w->disc,
+            radius + (int)(cos(a) * radius),
+            radius + (int)(sin(a) * radius));
+    }
+    evas_object_move(w->disc, x - radius, y - radius);
+    evas_object_show(w->disc);
+
+    w->label = elm_label_add(ad->win);
+    elm_object_text_set(w->label, caption);
+    evas_object_color_set(w->label, 255, 255, 255, 255);
+    evas_object_resize(w->label, radius * 2, 24);
+    evas_object_move(w->label, x - radius, y - 10);
+    evas_object_show(w->label);
+
+    evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_DOWN, widget_down, w);
+    evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_MOVE, widget_move_event, w);
+    evas_object_event_callback_add(w->disc, EVAS_CALLBACK_MOUSE_UP, widget_up, w);
 }
 
 static bool app_create(int width, int height, void *data)
@@ -89,18 +163,14 @@ static bool app_create(int width, int height, void *data)
     Evas *canvas;
     watch_time_h wt = NULL;
 
-    ad->width = width;
-    ad->height = height;
-    ad->cx = width / 2;
-    ad->cy = height / 2;
+    ad->width = width; ad->height = height;
+    ad->cx = width / 2; ad->cy = height / 2;
     ad->radius = (width < height ? width : height) / 2 - 12;
     ad->ambient = false;
-
     if (watch_app_get_elm_win(&ad->win) != APP_ERROR_NONE) {
         dlog_print(DLOG_ERROR, LOG_TAG, "Cannot get watch window");
         return false;
     }
-
     evas_object_resize(ad->win, width, height);
     canvas = evas_object_evas_get(ad->win);
 
@@ -110,16 +180,25 @@ static bool app_create(int width, int height, void *data)
     evas_object_resize(ad->background, width, height);
     evas_object_show(ad->background);
 
-    ad->hour_hand = create_hand(canvas, 224, 235, 247, 8);
-    ad->minute_hand = create_hand(canvas, 205, 222, 239, 6);
-    ad->second_hand = create_hand(canvas, 0, 174, 255, 2);
+    ad->hour_hand = create_hand(canvas);
+    ad->minute_hand = create_hand(canvas);
+    ad->second_hand = create_hand(canvas);
+
+    /* Four separate touch targets; each has its own position and base color. */
+    create_widget(ad, canvas, 0, ad->cx - ad->radius * .53,
+        ad->cy - ad->radius * .43, ad->radius * .16, 18, 151, 225, "STEPS");
+    create_widget(ad, canvas, 1, ad->cx + ad->radius * .53,
+        ad->cy - ad->radius * .43, ad->radius * .16, 226, 58, 78, "PULSE");
+    create_widget(ad, canvas, 2, ad->cx - ad->radius * .42,
+        ad->cy + ad->radius * .48, ad->radius * .13, 70, 205, 104, "BATTERY");
+    create_widget(ad, canvas, 3, ad->cx + ad->radius * .42,
+        ad->cy + ad->radius * .48, ad->radius * .13, 18, 174, 220, "DISTANCE");
 
     ad->hub_outer = evas_object_rectangle_add(canvas);
     evas_object_color_set(ad->hub_outer, 220, 235, 248, 255);
     evas_object_resize(ad->hub_outer, 12, 12);
     evas_object_move(ad->hub_outer, ad->cx - 6, ad->cy - 6);
     evas_object_show(ad->hub_outer);
-
     ad->hub_inner = evas_object_rectangle_add(canvas);
     evas_object_color_set(ad->hub_inner, 0, 174, 255, 255);
     evas_object_resize(ad->hub_inner, 5, 5);
@@ -130,7 +209,6 @@ static bool app_create(int width, int height, void *data)
         update_watch(ad, wt, false);
         watch_time_delete(wt);
     }
-
     evas_object_show(ad->win);
     return true;
 }
@@ -139,23 +217,18 @@ static void app_terminate(void *data) { (void)data; }
 static void app_pause(void *data) { (void)data; }
 static void app_resume(void *data) { (void)data; }
 static void app_control(app_control_h control, void *data)
-{
-    (void)control;
-    (void)data;
-}
+{ (void)control; (void)data; }
 
 static void app_time_tick(watch_time_h wt, void *data)
 {
     appdata_s *ad = data;
     if (ad && !ad->ambient) update_watch(ad, wt, false);
 }
-
 static void app_ambient_tick(watch_time_h wt, void *data)
 {
     appdata_s *ad = data;
     if (ad) update_watch(ad, wt, true);
 }
-
 static void app_ambient_changed(bool ambient_mode, void *data)
 {
     appdata_s *ad = data;
@@ -172,7 +245,6 @@ int main(int argc, char *argv[])
 {
     appdata_s ad = {0,};
     watch_app_lifecycle_callback_s callbacks = {0,};
-
     callbacks.create = app_create;
     callbacks.terminate = app_terminate;
     callbacks.pause = app_pause;
@@ -181,6 +253,5 @@ int main(int argc, char *argv[])
     callbacks.time_tick = app_time_tick;
     callbacks.ambient_tick = app_ambient_tick;
     callbacks.ambient_changed = app_ambient_changed;
-
     return watch_app_main(argc, argv, &callbacks, &ad);
 }
