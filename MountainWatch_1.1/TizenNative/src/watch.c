@@ -166,6 +166,26 @@ static Evas_Object *create_dial_circle(Evas *canvas, int cx, int cy,
     return circle;
 }
 
+static void create_dial_ring(Evas *canvas, int cx, int cy, int radius,
+                              int red, int green, int blue, int alpha)
+{
+    int i;
+    if (!canvas || radius <= 0) return;
+    for (i = 0; i < 96; i++) {
+        double a1 = (2.0 * PI * i) / 96.0;
+        double a2 = (2.0 * PI * (i + 1)) / 96.0;
+        Evas_Object *segment = evas_object_line_add(canvas);
+        evas_object_line_xy_set(segment,
+            cx + (int)(cos(a1) * radius),
+            cy + (int)(sin(a1) * radius),
+            cx + (int)(cos(a2) * radius),
+            cy + (int)(sin(a2) * radius));
+        evas_object_line_width_set(segment, 1);
+        evas_object_color_set(segment, red, green, blue, alpha);
+        evas_object_show(segment);
+    }
+}
+
 static void create_dial_bezel(appdata_s *ad, Evas *canvas)
 {
     if (!ad || !canvas) return;
@@ -181,6 +201,11 @@ static void create_dial_bezel(appdata_s *ad, Evas *canvas)
                        155, 174, 194, 255);
     create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 9,
                        5, 17, 33, 255);
+    /* Hairline reflections give the steel rim a crisp machined edge. */
+    create_dial_ring(canvas, ad->cx, ad->cy, ad->radius,
+                     225, 236, 248, 125);
+    create_dial_ring(canvas, ad->cx, ad->cy, ad->radius - 8,
+                     185, 205, 226, 105);
 }
 
 static void create_dial_marks(appdata_s *ad, Evas *canvas)
