@@ -655,6 +655,9 @@ static bool app_create(int width, int height, void *data)
     evas_object_raise(ad->minute_inlay);
     evas_object_raise(ad->second_hand);
 
+    /* Dark micro-bezel gives the central cap a more defined edge. */
+    create_dial_circle(canvas, ad->cx, ad->cy, 9,
+                       18, 35, 54, 255);
     ad->hub_outer = create_dial_circle(canvas, ad->cx, ad->cy, 7,
                                        220, 235, 248, 255);
     /* Tap the circular central hub to restore all four indicators. */
