@@ -195,6 +195,7 @@ static void widget_move_event(void *data, Evas *e, Evas_Object *obj, void *event
     widget_s *w = data;
     Evas_Event_Mouse_Move *ev = event;
     int x, y, maxr;
+    double dx, dy, distance;
     (void)e; (void)obj;
     if (!w || !ev || !w->dragging) return;
     w->moved = true;
@@ -202,10 +203,15 @@ static void widget_move_event(void *data, Evas *e, Evas_Object *obj, void *event
     y = ev->cur.output.y + w->drag_dy;
     maxr = (w->app->width < w->app->height ?
             w->app->width : w->app->height) / 2 - w->radius - 8;
-    if (x < w->app->cx - maxr) x = w->app->cx - maxr;
-    if (x > w->app->cx + maxr) x = w->app->cx + maxr;
-    if (y < w->app->cy - maxr) y = w->app->cy - maxr;
-    if (y > w->app->cy + maxr) y = w->app->cy + maxr;
+
+    /* Keep the whole indicator inside the round dial, not a square boundary. */
+    dx = x - w->app->cx;
+    dy = y - w->app->cy;
+    distance = sqrt(dx * dx + dy * dy);
+    if (distance > maxr && distance > 0.0) {
+        x = w->app->cx + (int)(dx * maxr / distance);
+        y = w->app->cy + (int)(dy * maxr / distance);
+    }
     widget_move(w, x, y);
 }
 
