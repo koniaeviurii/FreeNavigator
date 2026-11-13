@@ -37,6 +37,8 @@ typedef struct {
 struct appdata_s {
     Evas_Object *win, *background;
     Evas_Object *hour_hand, *minute_hand, *second_hand;
+    Evas_Object *tick_marks[60];
+    Evas_Object *numerals[4];
     Evas_Object *hub_touch, *hub_outer, *hub_inner;
     sensor_h hrm_sensor, pedometer_sensor;
     sensor_listener_h hrm_listener, pedometer_listener;
@@ -73,6 +75,45 @@ static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
         set_hand(ad->second_hand, ad->cx, ad->cy, s * 6.0,
                  ad->radius * .78, 2, 0, 174, 255);
         evas_object_show(ad->second_hand);
+    }
+}
+
+static void create_dial_marks(appdata_s *ad, Evas *canvas)
+{
+    int i;
+    const char *numbers[4] = {"12", "3", "6", "9"};
+    int nx[4], ny[4];
+    if (!ad || !canvas) return;
+
+    /* Fixed silver minute/hour marks around the dial; never draggable. */
+    for (i = 0; i < 60; i++) {
+        double a = (i * 6.0 - 90.0) * PI / 180.0;
+        double inner = ad->radius * (i % 5 == 0 ? 0.88 : 0.93);
+        double outer = ad->radius * 0.97;
+        Evas_Object *line = evas_object_line_add(canvas);
+        evas_object_line_xy_set(line,
+            ad->cx + (int)(cos(a) * inner),
+            ad->cy + (int)(sin(a) * inner),
+            ad->cx + (int)(cos(a) * outer),
+            ad->cy + (int)(sin(a) * outer));
+        evas_object_line_width_set(line, i % 5 == 0 ? 3 : 1);
+        evas_object_color_set(line, 190, 207, 225, i % 5 == 0 ? 255 : 175);
+        evas_object_show(line);
+        ad->tick_marks[i] = line;
+    }
+
+    nx[0] = ad->cx; ny[0] = ad->cy - (int)(ad->radius * 0.73);
+    nx[1] = ad->cx + (int)(ad->radius * 0.73); ny[1] = ad->cy;
+    nx[2] = ad->cx; ny[2] = ad->cy + (int)(ad->radius * 0.73);
+    nx[3] = ad->cx - (int)(ad->radius * 0.73); ny[3] = ad->cy;
+    for (i = 0; i < 4; i++) {
+        Evas_Object *label = elm_label_add(ad->win);
+        elm_object_text_set(label, numbers[i]);
+        evas_object_color_set(label, 220, 230, 242, 255);
+        evas_object_resize(label, 42, 34);
+        evas_object_move(label, nx[i] - 21, ny[i] - 17);
+        evas_object_show(label);
+        ad->numerals[i] = label;
     }
 }
 
@@ -359,6 +400,8 @@ static bool app_create(int width, int height, void *data)
     evas_object_move(ad->background, 0, 0);
     evas_object_resize(ad->background, width, height);
     evas_object_show(ad->background);
+
+    create_dial_marks(ad, canvas);
 
     ad->hour_hand = create_hand(canvas);
     ad->minute_hand = create_hand(canvas);
