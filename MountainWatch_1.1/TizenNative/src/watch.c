@@ -272,6 +272,25 @@ static void widget_load_position(widget_s *w)
     if (preference_get_int(key, &value) == APP_ERROR_NONE) w->y = value;
 }
 
+/* Clamp restored preferences too: an old saved position may belong to
+ * a different display size or an earlier dial layout. */
+static void widget_clamp_position(widget_s *w)
+{
+    int maxr;
+    double dx, dy, distance;
+    if (!w || !w->app) return;
+    maxr = (w->app->width < w->app->height ?
+            w->app->width : w->app->height) / 2 - w->radius - 8;
+    if (maxr < 0) maxr = 0;
+    dx = w->x - w->app->cx;
+    dy = w->y - w->app->cy;
+    distance = sqrt(dx * dx + dy * dy);
+    if (distance > maxr && distance > 0.0) {
+        w->x = w->app->cx + (int)(dx * maxr / distance);
+        w->y = w->app->cy + (int)(dy * maxr / distance);
+    }
+}
+
 static void widget_move(widget_s *w, int x, int y)
 {
     evas_object_move(w->disc, x - w->radius, y - w->radius);
@@ -366,6 +385,7 @@ static void create_widget(appdata_s *ad, Evas *canvas, int index,
     w->color_index = index;
     w->caption = caption;
     widget_load_position(w);
+    widget_clamp_position(w);
     {
         char key[40];
         int saved_color;
