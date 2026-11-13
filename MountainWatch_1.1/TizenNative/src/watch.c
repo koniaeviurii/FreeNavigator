@@ -99,6 +99,40 @@ static void update_watch(appdata_s *ad, watch_time_h wt, bool ambient)
         evas_object_show(ad->second_hand);
     }
 }
+static Evas_Object *create_dial_circle(Evas *canvas, int cx, int cy,
+                                               int radius, int red, int green,
+                                               int blue, int alpha)
+{
+    Evas_Object *circle;
+    int i;
+    if (!canvas || radius <= 0) return NULL;
+    circle = evas_object_polygon_add(canvas);
+    for (i = 0; i < 72; i++) {
+        double a = 2.0 * PI * i / 72.0;
+        evas_object_polygon_point_add(circle,
+            radius + (int)(cos(a) * radius),
+            radius + (int)(sin(a) * radius));
+    }
+    evas_object_color_set(circle, red, green, blue, alpha);
+    evas_object_move(circle, cx - radius, cy - radius);
+    evas_object_show(circle);
+    return circle;
+}
+
+static void create_dial_bezel(appdata_s *ad, Evas *canvas)
+{
+    if (!ad || !canvas) return;
+    /* Layered concentric tones create a restrained brushed-steel bezel. */
+    create_dial_circle(canvas, ad->cx, ad->cy, ad->radius + 2,
+                       3, 5, 9, 255);
+    create_dial_circle(canvas, ad->cx, ad->cy, ad->radius,
+                       174, 190, 207, 255);
+    create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 4,
+                       72, 91, 112, 255);
+    create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 9,
+                       5, 17, 33, 255);
+}
+
 static void create_dial_marks(appdata_s *ad, Evas *canvas)
 {
     int i;
@@ -469,7 +503,7 @@ static bool app_create(int width, int height, void *data)
     evas_object_resize(ad->background, width, height);
     evas_object_show(ad->background);
 
-    create_dial_marks(ad, canvas);
+    create_dial_bezel(ad, canvas);\n    create_dial_marks(ad, canvas);
 
     ad->hour_shadow = create_hand(canvas);
     ad->minute_shadow = create_hand(canvas);
