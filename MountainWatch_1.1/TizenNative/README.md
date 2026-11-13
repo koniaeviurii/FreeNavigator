@@ -10,6 +10,17 @@ Current source:
 - `src/watch.c` — native watch lifecycle, analog clock with two tapered filled metal hour/minute hands with slim blue inlays, one thin blue seconds hand and subtle hand shadows, ambient-mode updates, four separate touch-drag widget targets with translucent glass-like highlights constrained to the round dial, a layered concentric steel-tone bezel with fine inner highlight lines and a circular center cap with a dark micro-bezel, fixed silver minute/hour marks and cardinal numerals, persistent widget positions/colors, live battery percentage, sensor listeners for heart rate and steps when supported by the watch, and a clearly approximate distance estimate derived from steps.
 - `tizen-manifest.xml` — wearable application manifest.
 
+## Native project metadata
+
+The Eclipse/Tizen project metadata files have now been added:
+- `.project` — Eclipse C project descriptor.
+- `.tproject` — Wearable 4.0.0 target profile.
+- `project_def.prop` — native application source and linker settings.
+
+The Evas polygon objects now receive explicit geometry (move and resize), including the dial rings and the four indicator/glass layers. The health-info privilege is expressed using the standard manifest `privileges` block.
+
+**Build status:** metadata preparation is not a compilation. A matching Wearable 4.0 SDK/toolchain and a valid signing profile are still required. The Eclipse managed-build descriptor (`.cproject`) and an actual SDK build remain outstanding.
+
 ## Required build environment
 
 Samsung's supported workflow for a native Tizen watch application uses **Tizen Studio** with the Wearable 4.0 platform and a generated Tizen author/distributor certificate. The project must be built and signed in that environment before it can be installed on the SM-R800.
