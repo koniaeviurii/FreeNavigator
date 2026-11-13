@@ -176,6 +176,9 @@ static void create_dial_bezel(appdata_s *ad, Evas *canvas)
                        174, 190, 207, 255);
     create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 4,
                        72, 91, 112, 255);
+    /* Fine inner steel highlight separates the bezel from the dial face. */
+    create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 7,
+                       155, 174, 194, 255);
     create_dial_circle(canvas, ad->cx, ad->cy, ad->radius - 9,
                        5, 17, 33, 255);
 }
