@@ -10,6 +10,8 @@ h1{font-size:18px;margin:2px}.watch{width:min(94vw,430px);aspect-ratio:1;border-
 svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%,430px);padding:13px;background:#151e29;border:1px solid #304052;border-radius:14px;display:grid;gap:10px}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:9px}label{display:grid;gap:5px;color:#b8c8d8;font-size:12px}select{width:100%;padding:9px;border-radius:8px;background:#080e16;color:#fff;border:1px solid #40556b;font-size:14px}
 .toggles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.toggles label{display:flex;align-items:center;gap:7px;color:#e4edf6;font-size:13px}input{accent-color:var(--blue)}
+
+.color-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.color-grid label{display:grid;grid-template-columns:1fr 54px;align-items:center}.color-grid input{width:54px;height:32px;padding:2px;border:1px solid #40556b;border-radius:7px;background:#080e16}.group-title{font-size:13px;color:#fff;font-weight:700;margin-top:3px}
 .note{max-width:430px;margin:0;color:#9cabb9;font-size:12px;line-height:1.45;text-align:center}
 
 #stepsWidget,#pulseWidget,#batteryWidget,#distanceWidget{cursor:grab;touch-action:none}
@@ -91,6 +93,14 @@ svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%
 </g>
 </svg></div>
 <section class="panel">
+ <div class="group-title">Индивидуальные цвета</div>
+ <div class="color-grid">
+  <label>Фон циферблата<input type="color" id="dialColor" value="#02060b"></label><label>Стрелки<input type="color" id="handColor" value="#dceeff"></label>
+  <label>Цифры<input type="color" id="numberColor" value="#f4f7fb"></label><label>Деления<input type="color" id="tickColor" value="#e6f3ff"></label>
+  <label>Горы<input type="color" id="mountainColor" value="#477a9d"></label><label>Небо и озеро<input type="color" id="sceneColor" value="#1468a5"></label>
+  <label>Шаги<input type="color" id="stepsColor" value="#087fca"></label><label>Пульс<input type="color" id="pulseColor" value="#f23b49"></label>
+  <label>Батарея<input type="color" id="batteryColor" value="#53df65"></label><label>Расстояние<input type="color" id="distanceColor" value="#08aaff"></label>
+ </div>
  <div class="controls">
   <label>Цветовая тема<select id="palette"><option value="blue">Сине-голубая</option><option value="gold">Золотистая</option><option value="violet">Фиолетовая</option><option value="silver">Серебристая</option><option value="green">Зелёная</option><option value="turquoise">Бирюзовая</option></select></label>
   <label>Стиль пейзажа<select id="style"><option value="real">Объёмный</option><option value="art">Художественный</option><option value="line">Контурный</option></select></label>
@@ -123,6 +133,21 @@ function svgPoint(evt){const pt=document.querySelector('svg').createSVGPoint();p
 function clampWidget(x,y,id){const radius=id==='stepsWidget'||id==='pulseWidget'?48:id==='distanceWidget'?38:31;const max=170-radius-3;const dx=x-180,dy=y-180,len=Math.hypot(dx,dy);if(len>max){x=180+dx/len*max;y=180+dy/len*max}return [Math.max(radius+5,Math.min(360-radius-5,x)),Math.max(radius+5,Math.min(360-radius-5,y))]}
 Object.keys(defaultPositions).forEach(id=>{const g=document.getElementById(id);g.addEventListener('pointerdown',e=>{e.preventDefault();g.setPointerCapture(e.pointerId);const p=svgPoint(e);const m=(g.getAttribute('transform')||'').match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);const x=m?Number(m[1]):defaultPositions[id][0],y=m?Number(m[2]):defaultPositions[id][1];dragging={id,dx:x-p.x,dy:y-p.y}});g.addEventListener('pointermove',e=>{if(!dragging||dragging.id!==id)return;const p=svgPoint(e),xy=clampWidget(p.x+dragging.dx,p.y+dragging.dy,id);setWidgetPosition(id,xy[0],xy[1])});const stop=()=>{if(dragging&&dragging.id===id){const m=(g.getAttribute('transform')||'').match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);if(m){savedPositions[id]=[Number(m[1]),Number(m[2])];try{localStorage.setItem('mountainWatchPositions',JSON.stringify(savedPositions))}catch(_){}}dragging=null}};g.addEventListener('pointerup',stop);g.addEventListener('pointercancel',stop)});
 document.getElementById('resetPositions').addEventListener('click',()=>{Object.entries(defaultPositions).forEach(([id,p])=>setWidgetPosition(id,p[0],p[1]));try{localStorage.removeItem('mountainWatchPositions')}catch(_){}});
+
+
+const colorDefaults={dialColor:'#02060b',handColor:'#dceeff',numberColor:'#f4f7fb',tickColor:'#e6f3ff',mountainColor:'#477a9d',sceneColor:'#1468a5',stepsColor:'#087fca',pulseColor:'#f23b49',batteryColor:'#53df65',distanceColor:'#08aaff'};
+function applyColor(id,value){
+ const svg=document.querySelector('svg');
+ if(id==='dialColor'){svg.querySelector('#face').setAttribute('fill',value);svg.querySelector('g[clip-path] > rect').setAttribute('fill',value)}
+ if(id==='handColor'){document.querySelectorAll('#hands path').forEach((el,i)=>{if(i<2)el.setAttribute('fill',value);else el.setAttribute('stroke',value)});document.querySelector('#hands circle:last-child').setAttribute('fill',value)}
+ if(id==='numberColor')document.querySelectorAll('svg g[clip-path] text').forEach(t=>t.setAttribute('fill',value));
+ if(id==='tickColor')document.querySelectorAll('#ticks line').forEach(el=>el.setAttribute('stroke',value));
+ if(id==='mountainColor')document.querySelectorAll('#landscape path').forEach((el,i)=>{if(i<4)el.setAttribute('fill',value)});
+ if(id==='sceneColor'){document.querySelector('#sky stop').setAttribute('stop-color',value);document.querySelectorAll('#water stop').forEach(el=>el.setAttribute('stop-color',value))}
+ const wm={stepsColor:'stepsWidget',pulseColor:'pulseWidget',batteryColor:'batteryWidget',distanceColor:'distanceWidget'};
+ if(wm[id]){const g=document.getElementById(wm[id]),ring=g.querySelector('circle:nth-child(2)');if(ring)ring.setAttribute('stroke',value);g.querySelectorAll('path,rect').forEach(el=>{if(el.getAttribute('fill')&&el.getAttribute('fill')!=='none')el.setAttribute('fill',value)})}
+}
+Object.keys(colorDefaults).forEach(id=>{const input=document.getElementById(id);let saved=null;try{saved=localStorage.getItem('mountainWatchColor_'+id)}catch(_){}if(saved&&/^#[0-9a-f]{6}$/i.test(saved))input.value=saved;applyColor(id,input.value);input.addEventListener('input',()=>{applyColor(id,input.value);try{localStorage.setItem('mountainWatchColor_'+id,input.value)}catch(_){}})});
 
 function clock(){const d=new Date();document.getElementById('date').textContent=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'}).toUpperCase();document.getElementById('weekday').textContent=d.toLocaleDateString('ru-RU',{weekday:'long'}).toUpperCase()}clock();
 </script></body></html>
