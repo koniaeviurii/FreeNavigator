@@ -11,6 +11,7 @@ svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:9px}label{display:grid;gap:5px;color:#b8c8d8;font-size:12px}select{width:100%;padding:9px;border-radius:8px;background:#080e16;color:#fff;border:1px solid #40556b;font-size:14px}
 .toggles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.toggles label{display:flex;align-items:center;gap:7px;color:#e4edf6;font-size:13px}input{accent-color:var(--blue)}
 
+.color-section{border:1px solid #30485d;border-radius:9px;background:#0c1520;overflow:hidden}.color-section summary{padding:10px 12px;color:#eaf5ff;font-weight:600;cursor:pointer;list-style:none}.color-section summary::-webkit-details-marker{display:none}.color-section summary:after{content:'＋';float:right;color:#8edaff}.color-section[open] summary:after{content:'−'}.color-section .color-grid{padding:0 10px 10px}
 .color-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.color-grid label{display:grid;grid-template-columns:1fr 54px;align-items:center}.color-grid input{width:54px;height:32px;padding:2px;border:1px solid #40556b;border-radius:7px;background:#080e16}.group-title{font-size:13px;color:#fff;font-weight:700;margin-top:3px}
 .note{max-width:430px;margin:0;color:#9cabb9;font-size:12px;line-height:1.45;text-align:center}
 
@@ -93,14 +94,13 @@ svg{width:100%;height:100%;display:block;border-radius:50%}.panel{width:min(100%
 </g>
 </svg></div>
 <section class="panel">
- <div class="group-title">Индивидуальные цвета</div>
- <div class="color-grid">
-  <label>Фон циферблата<input type="color" id="dialColor" value="#02060b"></label><label>Стрелки<input type="color" id="handColor" value="#dceeff"></label>
-  <label>Цифры<input type="color" id="numberColor" value="#f4f7fb"></label><label>Деления<input type="color" id="tickColor" value="#e6f3ff"></label>
-  <label>Горы<input type="color" id="mountainColor" value="#477a9d"></label><label>Небо и озеро<input type="color" id="sceneColor" value="#1468a5"></label>
-  <label>Шаги<input type="color" id="stepsColor" value="#087fca"></label><label>Пульс<input type="color" id="pulseColor" value="#f23b49"></label>
-  <label>Батарея<input type="color" id="batteryColor" value="#53df65"></label><label>Расстояние<input type="color" id="distanceColor" value="#08aaff"></label>
- </div>
+ <div class="group-title">Настройки цвета</div>
+ <details class="color-section"><summary>Фон циферблата</summary><div class="color-grid"><label>Фон циферблата<input type="color" id="dialColor" value="#02060b"></label></div></details>
+ <details class="color-section"><summary>Стрелки</summary><div class="color-grid"><label>Стрелки<input type="color" id="handColor" value="#dceeff"></label></div></details>
+ <details class="color-section"><summary>Цифры и деления</summary><div class="color-grid"><label>Цифры<input type="color" id="numberColor" value="#f4f7fb"></label><label>Деления<input type="color" id="tickColor" value="#e6f3ff"></label></div></details>
+ <details class="color-section"><summary>Горы и пейзаж</summary><div class="color-grid"><label>Горы<input type="color" id="mountainColor" value="#477a9d"></label><label>Небо и озеро<input type="color" id="sceneColor" value="#1468a5"></label></div></details>
+ <details class="color-section"><summary>Круглые индикаторы</summary><div class="color-grid"><label>Шаги<input type="color" id="stepsColor" value="#087fca"></label><label>Пульс<input type="color" id="pulseColor" value="#f23b49"></label><label>Батарея<input type="color" id="batteryColor" value="#53df65"></label><label>Расстояние<input type="color" id="distanceColor" value="#08aaff"></label></div></details>
+ <button id="restoreColors" type="button">Вернуть исходные цвета</button>
  <div class="controls">
   <label>Цветовая тема<select id="palette"><option value="blue">Сине-голубая</option><option value="gold">Золотистая</option><option value="violet">Фиолетовая</option><option value="silver">Серебристая</option><option value="green">Зелёная</option><option value="turquoise">Бирюзовая</option></select></label>
   <label>Стиль пейзажа<select id="style"><option value="real">Объёмный</option><option value="art">Художественный</option><option value="line">Контурный</option></select></label>
@@ -148,6 +148,14 @@ function applyColor(id,value){
  if(wm[id]){const g=document.getElementById(wm[id]),ring=g.querySelector('circle:nth-child(2)');if(ring)ring.setAttribute('stroke',value);g.querySelectorAll('path,rect').forEach(el=>{if(el.getAttribute('fill')&&el.getAttribute('fill')!=='none')el.setAttribute('fill',value)})}
 }
 Object.keys(colorDefaults).forEach(id=>{const input=document.getElementById(id);let saved=null;try{saved=localStorage.getItem('mountainWatchColor_'+id)}catch(_){}if(saved&&/^#[0-9a-f]{6}$/i.test(saved))input.value=saved;applyColor(id,input.value);input.addEventListener('input',()=>{applyColor(id,input.value);try{localStorage.setItem('mountainWatchColor_'+id,input.value)}catch(_){}})});
+document.getElementById('restoreColors').addEventListener('click',()=>{
+ Object.entries(colorDefaults).forEach(([id,value])=>{
+  const input=document.getElementById(id);input.value=value;applyColor(id,value);
+  try{localStorage.removeItem('mountainWatchColor_'+id)}catch(_){}
+ });
+ const palette=document.getElementById('palette');palette.value='blue';palette.dispatchEvent(new Event('change'));
+ document.querySelectorAll('.color-section').forEach(section=>section.open=false);
+});
 
 function clock(){const d=new Date();document.getElementById('date').textContent=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'}).toUpperCase();document.getElementById('weekday').textContent=d.toLocaleDateString('ru-RU',{weekday:'long'}).toUpperCase()}clock();
 </script></body></html>
