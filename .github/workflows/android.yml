@@ -1,58 +1,45 @@
-name: FreeNavigator APK
+name: FreeNavigator Android build
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 permissions:
   contents: read
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+env:
+  JAVA_VERSION: '17'
+  GRADLE_VERSION: '8.9'
 
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
     steps:
-      - name: Download source
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
-      - name: Extract source
-        run: |
-          unzip -q FreeNavigator-0.2.9-source.zip -d source
-      - name: Save extracted source for inspection
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK exists
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FreeNavigator-source-extracted
-          path: source/
-          if-no-files-found: error
-          retention-days: 3
-      - name: Find project and build APK
-        run: |
-          PROJECT_FILE=$(find source -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "Gradle project not found"
-            find source -maxdepth 4 -type f
-            exit 1
-          fi
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-          gradle --no-daemon -p "$PROJECT_DIR" :app:assembleDebug
-
-      - name: Save APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: FreeNavigator-APK
-          path: source/**/app/build/outputs/apk/debug/app-debug.apk
+          name: FreeNavigator-0.2.9-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
