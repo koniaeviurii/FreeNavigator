@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var drawerScrim: View
     private lateinit var drawerPanel: LinearLayout
     private var searchExpanded = false
-    private var radarEnabled = false
+    private var radarEnabled = true
     private var locationSource: GeoJsonSource? = null
     private var lastKnownPoint: Point? = null
     private var searchResultSource: GeoJsonSource? = null
@@ -107,6 +107,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         MapLibre.getInstance(this)
         super.onCreate(savedInstanceState)
+        radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+            .getBoolean("radar_enabled", true)
         buildScreen(savedInstanceState)
     }
 
@@ -351,12 +353,20 @@ class MainActivity : AppCompatActivity() {
             infoDialog("Избранное", "Сохранение избранных мест будет добавлено позже.")
         }
         drawerDivider(panel)
-        drawerItem(panel, "◉", "Радары и дорожные события", if (radarEnabled) "Включены" else "Выключены") {
+        drawerItem(panel, "◉", "Антирадар", if (radarEnabled) "Включён" else "Выключен") {
             radarEnabled = !radarEnabled
-            infoDialog("Радары и дорожные события", if (radarEnabled)
-                "Переключатель включён. Источник дорожных данных ещё предстоит подключить."
-            else "Отображение радаров выключено.")
+            getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+                .edit().putBoolean("radar_enabled", radarEnabled).apply()
+            // Rebuild the drawer row so its status reflects the saved selection.
+            val updatedDrawer = buildDrawer()
+            drawerPanel.removeAllViews()
+            while (updatedDrawer.childCount > 0) {
+                val child = updatedDrawer.getChildAt(0)
+                updatedDrawer.removeViewAt(0)
+                drawerPanel.addView(child)
+            }
             hideDrawer()
+            toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
         }
         drawerItem(panel, "⚙", "Настройки", "Параметры навигатора") {
             infoDialog("Настройки", "Дополнительные настройки добавим по мере подключения функций.")
@@ -364,7 +374,7 @@ class MainActivity : AppCompatActivity() {
         val spacer = View(this)
         panel.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.2.1"
+            text = "FreeNavigator · версия 0.3.0"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
