@@ -1,8 +1,8 @@
-# Free Navigator — developer preview 0.2.8
+# Free Navigator — developer preview 0.3.1
 
 Android project for a Russian-language navigation app. This version replaces the placeholder screen with a real online vector map.
 
-## Implemented in 0.2.8
+## Implemented in 0.3.1
 - MapLibre Native Android map using OpenFreeMap's Liberty style.
 - Light/dark map style switch.
 - Place/address search using the Photon geocoding demo API.
@@ -13,12 +13,18 @@ Android project for a Russian-language navigation app. This version replaces the
 - Route planning with selectable origin and destination.
 - Live GPS-follow mode after tapping “Начать маршрут”.
 - Blue directional arrow, map camera following the current position, remaining distance/time estimate, and route stop button.
-- OpenStreetMap/OpenFreeMap attribution shown on screen.
+- Compact route progress panel with start time, estimated arrival, remaining distance caption and stop button.
+- Route alternatives requested from OSRM when the public routing service provides them.
+- Five-second full-route preview after pressing “Начать маршрут”.
+- Russian TTS announcements for route readiness, maneuver steps when supplied by OSRM, route start and arrival.
+- Search opened from the side menu; the old bottom search control has been removed.
+- Compact search result labels: place name, type and city when available.
+- Anti-radar cache downloads nearby fixed speed-camera nodes from OpenStreetMap Overpass, keeps the last successful dataset locally, checks for updates on app start/location change and schedules a daily WorkManager refresh.
+- Foreground GPS proximity monitoring with Russian voice warning within approximately 800 metres of a cached camera.
 
 ## Not implemented yet
-- Turn-by-turn voice instructions and lane guidance.
-- Live traffic, speed cameras/radar alerts.
-- Offline regional map packages, offline search and offline routing.
+- Lane guidance, traffic-light/incident warnings and live traffic data.
+- Mobile radar reports and community-reported mobile cameras.
 - Background navigation service and guaranteed continuous tracking while the app is not visible.
 - Production geocoder/routing backend and provider SLA.
 
@@ -41,7 +47,7 @@ Open this folder in Android Studio (JDK 17; Android SDK platform 35), allow Grad
 В репозитории настроен GitHub Actions workflow `.github/workflows/android.yml`:
 - запускается при отправке изменений в ветку `main` или вручную через **Actions → FreeNavigator Android build → Run workflow**;
 - собирает `:app:assembleDebug` на Java 17 и Gradle 8.9;
-- проверяет наличие APK и публикует его как артефакт `FreeNavigator-0.2.9-debug-apk` на 14 дней.
+- проверяет наличие APK и публикует его как артефакт `FreeNavigator-0.3.1-debug-apk` на 14 дней.
 
 После успешного запуска APK можно получить на странице запуска workflow в разделе **Artifacts**. Сборка в облаке и проверка установки на физическом телефоне — разные этапы; перед использованием нужно установить APK и проверить GPS, построение маршрута и переключение стиля карты.
 
@@ -51,9 +57,10 @@ Open this folder in Android Studio (JDK 17; Android SDK platform 35), allow Grad
 - Обновление позиции и направления вынесено в общую функцию, чтобы одинаково работать при обычном GPS-обновлении и восстановлении карты.
 
 
-## Версия 0.3.0 — переключатель антирадара
+## Важные ограничения версии 0.3.1
 
-- В боковом меню добавлен пункт «Антирадар».
-- По умолчанию антирадар включён.
-- Выбор включён/выключен сохраняется в настройках приложения и восстанавливается после перезапуска.
-- В этой версии реализован только переключатель. Реальные предупреждения о камерах и дорожных событиях пока не подключены; для них нужны проверенная база координат и отдельный механизм оповещений.
+- База камер берётся из OpenStreetMap через Overpass и может быть неполной или устаревшей. Сейчас это стационарные точки, отмеченные в OSM; мобильные радары не покрываются.
+- Голосовые предупреждения зависят от установленного на Android движка синтеза речи и доступного русского голоса.
+- Публичный OSRM может вернуть только один маршрут, даже при запросе альтернатив. Пошаговые подсказки ограничены теми манёврами, которые вернул сервис.
+- Непрерывной фоновой навигации в этой версии нет: GPS-антирадар работает, пока приложение находится на экране; ежедневное обновление базы выполняется WorkManager при наличии сети.
+- Реальная сборка APK и проверка на телефоне должны быть выполнены через GitHub Actions. В текущей среде нет Android SDK/Gradle, поэтому сборка здесь не подтверждена.
