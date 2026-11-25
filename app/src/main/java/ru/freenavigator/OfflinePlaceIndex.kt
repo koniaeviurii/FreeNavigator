@@ -99,18 +99,14 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
         val cleaned = query.trim().replace(Regex("\\s+"), " ")
         if (cleaned.length < 2) return emptyList()
         val tokens = cleaned.split(' ').filter { it.isNotBlank() }.take(5)
-        // Escape LIKE metacharacters so a literal '%' or '_' in the query is not a wildcard.
-        val clauses = tokens.map { "(name LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\' OR city LIKE ? ESCAPE '\\\\')" }
-        val args = tokens.flatMap { token ->
-            val pattern = "%${escapeLike(token)}%"
-            listOf(pattern, pattern, pattern)
-        }.toMutableList()
-        // Prefix matches are ranked first with a bound parameter (not SQL interpolation).
-        args.add(0, escapeLike(cleaned) + "%")
+        // instr() treats user input literally and avoids SQL LIKE wildcard semantics.
+        val clauses = tokens.map { "(instr(lower(name), lower(?)) > 0 OR instr(lower(category), lower(?)) > 0 OR instr(lower(city), lower(?)) > 0)" }
+        val args = tokens.flatMap { token -> listOf(token, token, token) }.toMutableList()
+        val prefix = cleaned
         val results = mutableListOf<Place>()
         readableDatabase.rawQuery(
-            "SELECT id, name, category, city, latitude, longitude FROM $TABLE WHERE ${clauses.joinToString(" AND ")} ORDER BY CASE WHEN name LIKE ? ESCAPE '\\\\' THEN 0 ELSE 1 END, name COLLATE NOCASE LIMIT ?",
-            (args + limit.coerceIn(1, 50).toString()).toTypedArray()
+            "SELECT id, name, category, city, latitude, longitude FROM $TABLE WHERE ${clauses.joinToString(" AND ")} ORDER BY CASE WHEN lower(substr(name,1,length(?))) = lower(?) THEN 0 ELSE 1 END, name COLLATE NOCASE LIMIT ?",
+            (args + listOf(prefix, prefix, limit.coerceIn(1, 50).toString())).toTypedArray()
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 results.add(
