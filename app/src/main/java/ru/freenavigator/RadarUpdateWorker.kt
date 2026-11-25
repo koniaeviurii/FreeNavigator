@@ -2,6 +2,7 @@ package ru.freenavigator
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.location.Location
 import android.net.NetworkCapabilities
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -30,7 +31,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 connectTimeout = 15000
                 readTimeout = 30000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "FreeNavigator/0.5.5 (Android navigation app)")
+                setRequestProperty("User-Agent", "FreeNavigator/0.5.6 (Android navigation app)")
             }
             val body = try {
                 val code = connection.responseCode
@@ -54,10 +55,43 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                     put("direction_backward", tags.optString("camera:direction:backward", ""))
                 })
             }
-            // Empty or filtered responses must never erase a useful previous cache.
+            // Never replace the whole database with one local download: keep nearby
+            // cameras from earlier areas so a journey across region boundaries does
+            // not suddenly lose its warnings. New records win when IDs overlap.
             if (normalized.length() == 0) return Result.retry()
+            val merged = linkedMapOf<String, JSONObject>()
+            val previousRaw = prefs.getString("radar_cache", null)
+            if (!previousRaw.isNullOrBlank()) {
+                try {
+                    val previous = org.json.JSONArray(previousRaw)
+                    for (i in 0 until previous.length()) {
+                        val camera = previous.optJSONObject(i) ?: continue
+                        val id = camera.optString("id")
+                        if (id.isBlank()) continue
+                        val distance = FloatArray(1)
+                        Location.distanceBetween(
+                            lat, lon,
+                            camera.optDouble("lat", Double.NaN),
+                            camera.optDouble("lon", Double.NaN),
+                            distance
+                        )
+                        if (distance[0].isFinite() && distance[0] <= 60000f) {
+                            merged[id] = camera
+                        }
+                    }
+                } catch (_: Exception) {
+                    // A damaged old cache is ignored; the fresh download remains usable.
+                }
+            }
+            for (i in 0 until normalized.length()) {
+                val camera = normalized.optJSONObject(i) ?: continue
+                val id = camera.optString("id")
+                if (id.isNotBlank()) merged[id] = camera
+            }
+            val combined = org.json.JSONArray()
+            merged.values.takeLast(5000).forEach(combined::put)
             prefs.edit()
-                .putString("radar_cache", normalized.toString())
+                .putString("radar_cache", combined.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())
                 .putFloat("radar_center_lat", lat.toFloat())
                 .putFloat("radar_center_lon", lon.toFloat())
