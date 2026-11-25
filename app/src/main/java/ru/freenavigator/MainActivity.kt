@@ -582,7 +582,7 @@ class MainActivity : AppCompatActivity() {
                             for (endpoint in endpoints) {
                                 try {
                                     val body = httpGetLong(endpoint + encoded)
-                                    imported = OfflineRoadGraph(this@MainActivity).replaceFromOverpassJson(body)
+                                    imported = useOfflineRoadGraph { it.replaceFromOverpassJson(body) }
                                     break
                                 } catch (error: Exception) { lastError = error }
                             }
@@ -618,8 +618,13 @@ class MainActivity : AppCompatActivity() {
         } finally { connection.disconnect() }
     }
 
+    private fun <T> useOfflineRoadGraph(block: (OfflineRoadGraph) -> T): T {
+        val graph = OfflineRoadGraph(this)
+        return try { block(graph) } finally { graph.close() }
+    }
+
     private fun calculateOfflineRoute(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double): RouteData {
-        val result = OfflineRoadGraph(this).calculateRoute(fromLat, fromLon, toLat, toLon, fastest = true)
+        val result = useOfflineRoadGraph { it.calculateRoute(fromLat, fromLon, toLat, toLon, fastest = true) }
             ?: throw IllegalStateException("Офлайн-путь не найден. Загрузите дорожные данные для обеих точек маршрута.")
         val points = result.points.map { Point.fromLngLat(it.second, it.first) }
         val steps = result.steps.map { step ->
@@ -897,7 +902,7 @@ class MainActivity : AppCompatActivity() {
                 if (chosen == "offline") {
                     val missing = mutableListOf<String>()
                     if (OfflinePlaceIndex(this).count() == 0) missing.add("импортируйте GeoJSON с местами")
-                    if (OfflineRoadGraph(this).edgeCount() == 0) missing.add("загрузите дорожные данные для офлайн-маршрута")
+                    if (useOfflineRoadGraph { it.edgeCount() } == 0) missing.add("загрузите дорожные данные для офлайн-маршрута")
                     if (missing.isNotEmpty()) infoDialog("Офлайн-данные не полностью подготовлены", "Чтобы пользоваться всеми офлайн-функциями, сначала ${missing.joinToString(" и ")}.")
                 }
             }
