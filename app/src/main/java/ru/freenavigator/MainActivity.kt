@@ -828,7 +828,7 @@ class MainActivity : AppCompatActivity() {
             connectTimeout = 12000
             readTimeout = 15000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.2.1 (Android navigation app)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.4.6 (Android navigation app)")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru")
         }
