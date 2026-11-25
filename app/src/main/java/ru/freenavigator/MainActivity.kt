@@ -1862,9 +1862,12 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val count = try { org.json.JSONArray(prefs.getString("radar_cache", "[]")).length() } catch (_: Exception) { 0 }
         val updated = prefs.getLong("radar_updated_at", 0L)
         val date = if (updated > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated)) else "нет"
+        val error = prefs.getString("radar_last_error", null)
+        val lastResult = prefs.getString("radar_last_result", null)
+        val details = if (!error.isNullOrBlank()) "\nОшибка последней загрузки: $error" else if (!lastResult.isNullOrBlank()) "\nПоследний результат: $lastResult" else ""
         AlertDialog.Builder(this)
             .setTitle("База камер")
-            .setMessage("Загружено камер: $count\nПоследнее обновление: $date\n\nЗагрузка использует ваше текущее местоположение и интернет.")
+            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nЗагрузка использует ваше текущее местоположение и интернет.")
             .setPositiveButton("Загрузить / обновить") { _, _ ->
                 if (!radarEnabled) {
                     radarEnabled = true
