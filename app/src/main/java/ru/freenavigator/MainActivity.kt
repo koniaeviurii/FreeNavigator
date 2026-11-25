@@ -1777,7 +1777,10 @@ class MainActivity : AppCompatActivity() {
                 val cameraDirection = camera.optString("direction").toDoubleOrNull()
                     ?.takeIf { it.isFinite() && it in 0.0..360.0 }
                 if (cameraDirection != null && location.hasBearing() && location.speed >= 3.0f) {
-                    val angleDifference = kotlin.math.abs(((location.bearing - cameraDirection + 540f) % 360f) - 180f)
+                    // OSM direction is the direction the camera faces, generally
+                    // opposite to the heading of vehicles approaching it.
+                    val approachHeading = (cameraDirection + 180.0) % 360.0
+                    val angleDifference = kotlin.math.abs(((location.bearing - approachHeading + 540f) % 360f) - 180f)
                     if (angleDifference > 75f) continue
                 }
                 val distance = distanceBetween(location.latitude, location.longitude, camera.optDouble("lat"), camera.optDouble("lon"))
