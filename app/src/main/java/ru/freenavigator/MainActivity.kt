@@ -140,6 +140,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val offlineIndexPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            screenScope.launch {
+                try {
+                    val imported = withContext(Dispatchers.IO) {
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            OfflinePlaceIndex(this@MainActivity).replaceFromGeoJson(stream)
+                        } ?: throw IllegalStateException("Не удалось открыть файл")
+                    }
+                    toast("Офлайн-поиск: загружено объектов — $imported")
+                } catch (e: Exception) {
+                    toast("Не удалось импортировать базу: ${e.message ?: "ошибка файла"}")
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         MapLibre.getInstance(this)
         super.onCreate(savedInstanceState)
@@ -435,7 +454,7 @@ class MainActivity : AppCompatActivity() {
         val spacer = View(this)
         panel.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.4.1"
+            text = "FreeNavigator · версия 0.4.3"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
@@ -722,20 +741,23 @@ class MainActivity : AppCompatActivity() {
 
     /** Try Photon first, then use Nominatim if Photon is unreachable or returns an error. */
     private fun searchWithFallback(query: String): List<PlaceResult> {
-        var photonError: Exception? = null
+        // Online providers are preferred, but the local index remains usable without a network.
         try {
             val photon = photonSearch(query)
             if (photon.isNotEmpty()) return photon
-        } catch (e: Exception) {
-            photonError = e
-        }
+        } catch (_: Exception) { }
 
         try {
-            return nominatimSearch(query)
-        } catch (fallbackError: Exception) {
-            throw IllegalStateException("Photon and Nominatim search failed", fallbackError).also {
-                photonError?.let { old -> it.addSuppressed(old) }
-            }
+            val nominatim = nominatimSearch(query)
+            if (nominatim.isNotEmpty()) return nominatim
+        } catch (_: Exception) { }
+
+        return OfflinePlaceIndex(this).search(query).map { place ->
+            val category = place.category.takeIf { it.isNotBlank() }
+            val city = place.city.takeIf { it.isNotBlank() }
+            val short = listOfNotNull(place.name, category, city).distinct().joinToString(" · ")
+            val label = listOfNotNull(place.name, category, city).distinct().joinToString(", ")
+            PlaceResult(label, place.latitude, place.longitude, short)
         }
     }
 
