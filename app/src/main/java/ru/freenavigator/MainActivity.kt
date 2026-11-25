@@ -412,7 +412,10 @@ class MainActivity : AppCompatActivity() {
         drawerDivider(panel)
         drawerItem(panel, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
         drawerItem(panel, "⇩", "Загрузка офлайн-карт", "Сохранение областей на телефон") {
-            infoDialog("Офлайн-карты", "Загрузка и хранение карт появятся в следующем этапе разработки.")
+            infoDialog("Офлайн-карты", "Загрузка карт ещё разрабатывается. Приложение не скачивает большие области с серверов, которые этого не разрешают.")
+        }
+        drawerItem(panel, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
+            offlineIndexPicker.launch(arrayOf("application/geo+json", "application/json", "application/*", "*/*"))
         }
         drawerItem(panel, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(panel)
@@ -1359,7 +1362,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkRadarProximity(location: Location) {
-        if (!radarEnabled || !speechReady) return
+        if (foregroundGuidanceStarted || !radarEnabled || !speechReady) return
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
         val raw = prefs.getString("radar_cache", null) ?: return
         try {
