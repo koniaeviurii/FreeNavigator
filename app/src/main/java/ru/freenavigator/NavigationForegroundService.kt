@@ -41,14 +41,32 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private val requestedProviders = mutableSetOf<String>()
     private val watchdogHandler = Handler(Looper.getMainLooper())
     private var lastFixAt = 0L
+    private var lastProviderRetryAt = 0L
     private var waitingForGps = false
     private val gpsWatchdog = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
-            if (!arrived && lastFixAt > 0L && now - lastFixAt > 15000L && !waitingForGps) {
-                waitingForGps = true
-                updateNotification("Сигнал GPS потерян · ожидаем восстановления")
-                speak("Сигнал GPS потерян. Ожидаю восстановления.")
+            if (!arrived && lastFixAt > 0L && now - lastFixAt > 15000L) {
+                if (!waitingForGps) {
+                    waitingForGps = true
+                    updateNotification("Сигнал GPS потерян · маршрут сохранён, ищем сигнал")
+                    speak("Сигнал GPS потерян. Маршрут сохранён, продолжаю поиск сигнала.")
+                }
+                // Re-register location providers periodically. The route and next
+                // maneuver state are deliberately kept intact while GPS is unavailable.
+                if (now - lastProviderRetryAt >= 15000L) {
+                    lastProviderRetryAt = now
+                    removeLocationUpdates()
+                    requestAvailableProviders()
+                    try {
+                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                            .filter { locationManager.isProviderEnabled(it) }
+                            .mapNotNull { locationManager.getLastKnownLocation(it) }
+                            .maxByOrNull { it.time }
+                            ?.takeIf { System.currentTimeMillis() - it.time <= 30000L }
+                            ?.let(::onLocationChanged)
+                    } catch (_: SecurityException) { }
+                }
             }
             watchdogHandler.postDelayed(this, 5000L)
         }
@@ -113,6 +131,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     override fun onLocationChanged(location: Location) {
         if (arrived || !destinationLat.isFinite()) return
         lastFixAt = System.currentTimeMillis()
+        lastProviderRetryAt = lastFixAt
         if (waitingForGps) {
             waitingForGps = false
             updateNotification("GPS восстановлен · ведение активно")

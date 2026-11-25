@@ -1876,8 +1876,8 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                     enqueueRadarRefresh(loc.latitude, loc.longitude, true)
                     toast("Загрузка базы камер начата")
                 } else {
-                    toast("Получаем местоположение для загрузки базы")
-                    requestLocationOrCenter()
+                    toast("Ожидаем GPS для загрузки базы камер")
+                    requestRadarLocationAndDownload()
                 }
             }
             .setNegativeButton(if (radarEnabled) "Выключить антирадар" else "Включить антирадар") { _, _ ->
@@ -1889,6 +1889,57 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             }
             .setNeutralButton("Закрыть", null)
             .show()
+    }
+
+    private fun requestRadarLocationAndDownload() {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) {
+            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            return
+        }
+        val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        var completed = false
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (completed) return
+                completed = true
+                try { manager.removeUpdates(this) } catch (_: Exception) {}
+                enqueueRadarRefresh(location.latitude, location.longitude, true)
+                toast("Загрузка базы камер начата")
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+        try {
+            var requested = false
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                if (manager.isProviderEnabled(provider)) {
+                    manager.requestLocationUpdates(provider, 1000L, 0f, listener, mainLooper)
+                    requested = true
+                }
+            }
+            if (!requested) {
+                toast("Включите геолокацию, чтобы загрузить базу камер")
+                return
+            }
+            // Stop the one-shot location request after 30 seconds; later location
+            // updates from normal monitoring can still trigger automatic downloads.
+            android.os.Handler(mainLooper).postDelayed({
+                if (!completed) {
+                    completed = true
+                    try { manager.removeUpdates(listener) } catch (_: Exception) {}
+                    toast("GPS пока недоступен. Повторите загрузку, когда появится сигнал")
+                }
+            }, 30000L)
+        } catch (_: SecurityException) {
+            toast("Нет разрешения на получение местоположения")
+        } catch (_: Exception) {
+            try { manager.removeUpdates(listener) } catch (_: Exception) {}
+            toast("Не удалось получить координаты для базы камер")
+        }
     }
 
     private fun scheduleRadarUpdates() {

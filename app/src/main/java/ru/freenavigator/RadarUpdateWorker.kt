@@ -17,8 +17,9 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         val connectivity = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val activeNetwork = connectivity.activeNetwork ?: return Result.retry()
         val capabilities = connectivity.getNetworkCapabilities(activeNetwork) ?: return Result.retry()
-        // Deliberately reject mobile data and Ethernet: radar refresh is Wi-Fi-only.
-        if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return Result.retry()
+        // Allow Wi-Fi or mobile data. A radar database must be downloadable without Wi-Fi.
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return Result.retry()
 
         val prefs = applicationContext.getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
         val lat = inputData.getDouble("center_lat", prefs.getFloat("radar_center_lat", 0f).toDouble())
