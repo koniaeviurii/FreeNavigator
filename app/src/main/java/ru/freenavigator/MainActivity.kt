@@ -552,7 +552,7 @@ class MainActivity : AppCompatActivity() {
             isVerticalScrollBarEnabled = true
             overScrollMode = View.OVER_SCROLL_ALWAYS
             isSmoothScrollingEnabled = true
-            addView(content, ViewGroup.LayoutParams(-1, -2))
+            addView(content, android.view.ViewGroup.LayoutParams(-1, -2))
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
