@@ -1156,7 +1156,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleRadarUpdates() {
-        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
         val periodic = PeriodicWorkRequestBuilder<RadarUpdateWorker>(24, TimeUnit.HOURS)
             .setConstraints(constraints).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -1173,7 +1173,7 @@ class MainActivity : AppCompatActivity() {
         val moved = oldLat == 0.0 || distanceBetween(latitude, longitude, oldLat, oldLon) > 15000.0
         if (!force && updated > 0L && System.currentTimeMillis() - updated < 24L * 60L * 60L * 1000L && !moved) return
         val request = OneTimeWorkRequestBuilder<RadarUpdateWorker>()
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
             .setInputData(workDataOf("center_lat" to latitude, "center_lon" to longitude))
             .build()
         WorkManager.getInstance(this).enqueueUniqueWork("freenavigator-radar-refresh", ExistingWorkPolicy.KEEP, request)
