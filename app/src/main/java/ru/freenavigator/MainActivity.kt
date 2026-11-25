@@ -140,8 +140,13 @@ class MainActivity : AppCompatActivity() {
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
         speech = TextToSpeech(this) { result ->
-            speechReady = result == TextToSpeech.SUCCESS
-            if (speechReady) speech?.language = Locale("ru", "RU")
+            if (result == TextToSpeech.SUCCESS) {
+                val languageStatus = speech?.setLanguage(Locale("ru", "RU")) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                speechReady = languageStatus != TextToSpeech.LANG_MISSING_DATA &&
+                    languageStatus != TextToSpeech.LANG_NOT_SUPPORTED
+            } else {
+                speechReady = false
+            }
         }
         buildScreen(savedInstanceState)
         scheduleRadarUpdates()
