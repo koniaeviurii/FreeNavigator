@@ -64,3 +64,7 @@ Open this folder in Android Studio (JDK 17; Android SDK platform 35), allow Grad
 - Публичный OSRM может вернуть только один маршрут, даже при запросе альтернатив. Пошаговые подсказки ограничены теми манёврами, которые вернул сервис.
 - Непрерывной фоновой навигации в этой версии нет: GPS-антирадар работает, пока приложение находится на экране; ежедневное обновление базы выполняется WorkManager при наличии сети.
 - Реальная сборка APK и проверка на телефоне должны быть выполнены через GitHub Actions. В текущей среде нет Android SDK/Gradle, поэтому сборка здесь не подтверждена.
+
+
+### Build 0.4.8
+Radar refresh now preserves the existing offline camera cache when a refresh response contains no valid camera points.
