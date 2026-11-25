@@ -937,7 +937,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateNavigation(location: Location) {
         if (!navigationActive) return
-        checkRadarProximity(location)
+        if (!foregroundGuidanceStarted) checkRadarProximity(location)
         val nearestIndex = nearestRoutePointIndex(location.latitude, location.longitude)
         currentRouteIndex = nearestIndex
         val nearestPoint = navigationPoints.getOrNull(nearestIndex) ?: return
