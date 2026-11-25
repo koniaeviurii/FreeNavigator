@@ -645,7 +645,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 .build()
             HttpRequestUtil.setOkHttpClient(client)
-            OfflineManager.getInstance(this).setOfflineMapboxTileCountLimit(3000L)
+            OfflineManager.getInstance(this).setOfflineMapboxTileCountLimit(15000L)
         } catch (error: Exception) {
             android.util.Log.e("FreeNavigator", "Map download configuration failed", error)
         }
@@ -729,6 +729,12 @@ class MainActivity : AppCompatActivity() {
                 region.setObserver(object : OfflineRegion.OfflineRegionObserver {
                     override fun onStatusChanged(status: OfflineRegionStatus) {
                         val sizeMb = status.completedResourceSize / (1024L * 1024L)
+                        if (status.completedTileCount > 3000L) {
+                            region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                            statusText.text = "Офлайн-карта остановлена: более 3 000 плиток"
+                            toast("Одна загрузка ограничена 3 000 плитками. Уменьшите область и сохраните её частями.")
+                            return
+                        }
                         if (status.completedResourceSize > 50L * 1024L * 1024L) {
                             region.setDownloadState(OfflineRegion.STATE_INACTIVE)
                             statusText.text = "Офлайн-карта остановлена: достигнут лимит 50 МБ"
@@ -817,7 +823,10 @@ class MainActivity : AppCompatActivity() {
                                     region.setObserver(object : OfflineRegion.OfflineRegionObserver {
                                         override fun onStatusChanged(next: OfflineRegionStatus) {
                                             val mb = next.completedResourceSize / (1024L * 1024L)
-                                            if (next.completedResourceSize > 50L * 1024L * 1024L) {
+                                            if (next.completedTileCount > 3000L) {
+                                                region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                                toast("Загрузка остановлена на лимите 3 000 плиток")
+                                            } else if (next.completedResourceSize > 50L * 1024L * 1024L) {
                                                 region.setDownloadState(OfflineRegion.STATE_INACTIVE)
                                                 toast("Загрузка остановлена на лимите 50 МБ")
                                             } else if (next.isComplete) {
@@ -880,8 +889,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 dialog.dismiss()
                 hideDrawer()
-                if (chosen == "offline" && OfflinePlaceIndex(this).count() == 0)
-                    infoDialog("Локальная база пустая", "Для офлайн-поиска сначала импортируйте файл GeoJSON через пункт «Импорт офлайн-поиска».")
+                if (chosen == "offline") {
+                    val missing = mutableListOf<String>()
+                    if (OfflinePlaceIndex(this).count() == 0) missing.add("импортируйте GeoJSON с местами")
+                    if (OfflineRoadGraph(this).edgeCount() == 0) missing.add("загрузите дорожные данные для офлайн-маршрута")
+                    if (missing.isNotEmpty()) infoDialog("Офлайн-данные не полностью подготовлены", "Чтобы пользоваться всеми офлайн-функциями, сначала ${missing.joinToString(" и ")}.")
+                }
             }
             .setNegativeButton("Закрыть", null)
             .show()
