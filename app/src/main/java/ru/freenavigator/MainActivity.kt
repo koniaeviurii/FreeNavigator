@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedSearchPoint: Point? = null
     private var routeLine: LineString? = null
     private var navigationActive = false
+    private var navigationOffline = false
     private var foregroundGuidanceStarted = false
     private var navigationLocationListener: LocationListener? = null
     private var navigationSource: GeoJsonSource? = null
@@ -429,6 +430,10 @@ class MainActivity : AppCompatActivity() {
             hideDrawer()
             showOfflineMapsDialog()
         }
+        drawerItem(panel, "⇩", "Загрузка дорожных данных", "Дороги для офлайн-маршрутов · радиус 8 км") {
+            hideDrawer()
+            downloadOfflineRoads()
+        }
         drawerItem(panel, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
             offlineIndexPicker.launch(arrayOf("application/geo+json", "application/json", "application/*", "*/*"))
         }
@@ -472,7 +477,7 @@ class MainActivity : AppCompatActivity() {
         val spacer = View(this)
         panel.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.4.3"
+            text = "FreeNavigator · версия 0.5.2"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
@@ -553,6 +558,75 @@ class MainActivity : AppCompatActivity() {
         keyboard.hideSoftInputFromWindow(searchInput.windowToken, 0)
     }
 
+
+
+    private fun downloadOfflineRoads() {
+        val center = map?.cameraPosition?.target ?: currentDeviceLocation()?.let { LatLng(it.latitude, it.longitude) }
+        if (center == null) {
+            toast("Сначала определите местоположение или откройте нужную область карты")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Загрузить дорожную сеть?")
+            .setMessage("Будут загружены автомобильные дороги в радиусе 8 км от центра карты. Данные сохранятся на телефоне и будут использоваться для офлайн-прокладки маршрутов.")
+            .setPositiveButton("Загрузить") { _, _ ->
+                statusText.text = "Загружаем дорожную сеть…"
+                screenScope.launch {
+                    try {
+                        val edgeCount = withContext(Dispatchers.IO) {
+                            val query = "[out:json][timeout:45];way(around:8000,${center.latitude},${center.longitude})[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
+                            val encoded = URLEncoder.encode(query, "UTF-8")
+                            val endpoints = listOf("https://overpass-api.de/api/interpreter?data=", "https://overpass.kumi.systems/api/interpreter?data=")
+                            var lastError: Exception? = null
+                            var imported = 0
+                            for (endpoint in endpoints) {
+                                try {
+                                    val body = httpGetLong(endpoint + encoded)
+                                    imported = OfflineRoadGraph(this@MainActivity).replaceFromOverpassJson(body)
+                                    break
+                                } catch (error: Exception) { lastError = error }
+                            }
+                            if (imported == 0) throw lastError ?: IllegalStateException("Дорожные данные не получены")
+                            imported
+                        }
+                        statusText.text = "Офлайн-дороги сохранены"
+                        toast("Загружено дорожных сегментов: $edgeCount. Теперь можно строить офлайн-маршруты в пределах сохранённой области.")
+                    } catch (error: Exception) {
+                        statusText.text = "Не удалось загрузить дорожную сеть"
+                        toast("Загрузка дорог не удалась: ${error.message ?: "ошибка сети"}")
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun httpGetLong(address: String): String {
+        val connection = (URL(address).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20000
+            readTimeout = 60000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "FreeNavigator/0.5.2 (Android offline road graph)")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw java.io.IOException("Overpass HTTP $code: ${response.take(180)}")
+            return response
+        } finally { connection.disconnect() }
+    }
+
+    private fun calculateOfflineRoute(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double): RouteData {
+        val result = OfflineRoadGraph(this).calculateRoute(fromLat, fromLon, toLat, toLon, fastest = true)
+            ?: throw IllegalStateException("Офлайн-путь не найден. Загрузите дорожные данные для обеих точек маршрута.")
+        val points = result.points.map { Point.fromLngLat(it.second, it.first) }
+        val steps = result.steps.map { step ->
+            RouteStep(Point.fromLngLat(step.longitude, step.latitude), step.instruction, step.distanceMeters)
+        }
+        return RouteData(points, result.durationSeconds, result.distanceMeters, steps, offline = true)
+    }
 
     /** Keep OpenFreeMap offline downloads within the provider's published limits. */
     private fun configureMapNetworking() {
@@ -1080,7 +1154,7 @@ class MainActivity : AppCompatActivity() {
             connectTimeout = 12000
             readTimeout = 15000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.4.6 (Android navigation app)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.5.2 (Android navigation app)")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru")
         }
@@ -1154,7 +1228,19 @@ class MainActivity : AppCompatActivity() {
                     } ?: throw IllegalStateException("Начальная точка не найдена")
                     val destination = searchWithFallback(destinationQuery).firstOrNull()
                         ?: throw IllegalStateException("Место назначения не найдено")
-                    val routes = osrmRoutes(origin.latitude, origin.longitude, destination.lat, destination.lon)
+                    val mode = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+                        .getString("search_mode", "auto") ?: "auto"
+                    val routes = when (mode) {
+                        "offline" -> listOf(calculateOfflineRoute(origin.latitude, origin.longitude, destination.lat, destination.lon))
+                        "online" -> osrmRoutes(origin.latitude, origin.longitude, destination.lat, destination.lon)
+                        else -> try {
+                            osrmRoutes(origin.latitude, origin.longitude, destination.lat, destination.lon)
+                        } catch (onlineError: Exception) {
+                            try {
+                                listOf(calculateOfflineRoute(origin.latitude, origin.longitude, destination.lat, destination.lon))
+                            } catch (_: Exception) { throw onlineError }
+                        }
+                    }
                     Pair(destination, routes)
                 }
                 val destination = result.first
@@ -1185,11 +1271,11 @@ class MainActivity : AppCompatActivity() {
         map?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), dp(56)))
         val km = route.distanceMeters / 1000.0
         val minutes = route.durationSeconds / 60
-        statusText.text = "Маршрут: ${String.format(Locale.getDefault(), "%.1f", km)} км · около $minutes мин"
+        statusText.text = "${if (route.offline) "Офлайн-маршрут" else "Маршрут"}: ${String.format(Locale.getDefault(), "%.1f", km)} км · около $minutes мин"
         speak("Маршрут готов. Расстояние ${String.format(Locale.getDefault(), "%.1f", km)} километра. В пути около $minutes минут")
         AlertDialog.Builder(this)
             .setTitle("Маршрут")
-            .setMessage("До: ${destination.shortLabel}\nРасстояние: ${String.format(Locale.getDefault(), "%.1f", km)} км\nВ пути: около $minutes мин\n\nПолный маршрут будет показан на карте 5 секунд перед включением навигации.")
+            .setMessage("До: ${destination.shortLabel}\nРасстояние: ${String.format(Locale.getDefault(), "%.1f", km)} км\nВ пути: около $minutes мин\nИсточник: ${if (route.offline) "сохранённая дорожная сеть (офлайн)" else "онлайн"}\n\nПолный маршрут будет показан на карте 5 секунд перед включением навигации.")
             .setPositiveButton("Начать маршрут") { _, _ ->
                 screenScope.launch {
                     toast("Просмотр полного маршрута — 5 секунд")
@@ -1214,6 +1300,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         navigationPoints = points
+        navigationOffline = route.offline
         rerouteInProgress = false
         offRouteFixes = 0
         lastRerouteAt = 0L
@@ -1349,7 +1436,8 @@ class MainActivity : AppCompatActivity() {
         screenScope.launch {
             try {
                 val replacement = withContext(Dispatchers.IO) {
-                    osrmRoutes(originLat, originLon, destination.latitude(), destination.longitude()).firstOrNull()
+                    if (navigationOffline) calculateOfflineRoute(originLat, originLon, destination.latitude(), destination.longitude())
+                    else osrmRoutes(originLat, originLon, destination.latitude(), destination.longitude()).firstOrNull()
                         ?: throw IllegalStateException("Новый путь не найден")
                 }
                 if (!navigationActive) return@launch
@@ -1428,6 +1516,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopNavigation() {
         navigationActive = false
+        navigationOffline = false
         rerouteInProgress = false
         offRouteFixes = 0
         foregroundGuidanceStarted = false
@@ -1702,7 +1791,7 @@ class MainActivity : AppCompatActivity() {
 
     private data class PlaceResult(val label: String, val lat: Double, val lon: Double, val shortLabel: String = label)
     private data class RouteStep(val point: Point, val instruction: String, val distanceMeters: Double, var announced: Boolean = false)
-    private data class RouteData(val points: List<Point>, val durationSeconds: Int, val distanceMeters: Double, val steps: List<RouteStep>)
+    private data class RouteData(val points: List<Point>, val durationSeconds: Int, val distanceMeters: Double, val steps: List<RouteStep>, val offline: Boolean = false)
 
     companion object {
         private const val LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
