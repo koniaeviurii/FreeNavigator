@@ -10,6 +10,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.content.Context
+import android.content.Intent
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -958,7 +959,7 @@ class MainActivity : AppCompatActivity() {
         if (remaining < 25.0) {
             navigationInfo?.text = "Вы прибыли к месту назначения"
             routeRemainingText?.text = "До конца маршрута: 0,0 км"
-            if (!arrivalAnnounced) { speak("Вы прибыли к месту назначения"); arrivalAnnounced = true }
+            if (!foregroundGuidanceStarted && !arrivalAnnounced) { speak("Вы прибыли к месту назначения"); arrivalAnnounced = true }
         }
     }
 
