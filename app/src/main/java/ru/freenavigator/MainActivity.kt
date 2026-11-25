@@ -1389,6 +1389,14 @@ class MainActivity : AppCompatActivity() {
                 val camera = cameras.optJSONObject(i) ?: continue
                 val id = camera.optString("id")
                 if (id.isBlank() || id in announcedRadarIds) continue
+                // Match the foreground service: only suppress a camera when its
+                // numeric compass direction clearly faces away from reliable GPS course.
+                val cameraDirection = camera.optString("direction").toDoubleOrNull()
+                    ?.takeIf { it.isFinite() && it in 0.0..360.0 }
+                if (cameraDirection != null && location.hasBearing() && location.speed >= 3.0f) {
+                    val angleDifference = kotlin.math.abs(((location.bearing - cameraDirection + 540f) % 360f) - 180f)
+                    if (angleDifference > 75f) continue
+                }
                 val distance = distanceBetween(location.latitude, location.longitude, camera.optDouble("lat"), camera.optDouble("lon"))
                 if (distance < nearestDistance) {
                     nearestDistance = distance
