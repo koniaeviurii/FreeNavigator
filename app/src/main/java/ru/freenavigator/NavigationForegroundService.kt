@@ -70,7 +70,6 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         previousStepDistances = DoubleArray(count) { Double.MAX_VALUE }
         nextStep = 0
         arrived = false
-        announcedRadarIds.clear()
         pendingSpeech.clear()
         startForeground(NOTIFICATION_ID, buildNotification("Ведение по маршруту активно"))
         try {
