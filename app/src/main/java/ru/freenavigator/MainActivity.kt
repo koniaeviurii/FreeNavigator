@@ -639,7 +639,7 @@ class MainActivity : AppCompatActivity() {
                 .dispatcher(dispatcher)
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
-                        .header("User-Agent", "FreeNavigator/0.5.1 (Android offline map navigation)")
+                        .header("User-Agent", "FreeNavigator/0.5.2 (Android offline map navigation)")
                         .build()
                     chain.proceed(request)
                 }
@@ -869,8 +869,8 @@ class MainActivity : AppCompatActivity() {
         val mode = prefs.getString("search_mode", "auto") ?: "auto"
         val selected = when (mode) { "online" -> 0; "offline" -> 2; else -> 1 }
         AlertDialog.Builder(this)
-            .setTitle("Режим поиска")
-            .setSingleChoiceItems(arrayOf("Онлайн", "Автоматически (онлайн, затем локально)", "Офлайн — только загруженная база"), selected) { dialog, which ->
+            .setTitle("Режим карты, поиска и маршрута")
+            .setSingleChoiceItems(arrayOf("Онлайн · поиск и маршруты", "Автоматически · онлайн с локальным резервом", "Офлайн · только сохранённые данные"), selected) { dialog, which ->
                 val chosen = when (which) { 0 -> "online"; 2 -> "offline"; else -> "auto" }
                 prefs.edit().putString("search_mode", chosen).apply()
                 statusText.text = when(chosen) {
@@ -1380,17 +1380,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateNavigation(location: Location) {
         if (!navigationActive) return
         if (!foregroundGuidanceStarted) checkRadarProximity(location)
-        val nearestIndex = nearestRoutePointIndex(location.latitude, location.longitude)
-        currentRouteIndex = nearestIndex
-        val nearestPoint = navigationPoints.getOrNull(nearestIndex) ?: return
-        val distanceFromRoute = distanceBetween(location.latitude, location.longitude,
-            nearestPoint.latitude(), nearestPoint.longitude())
-        maybeReroute(location, distanceFromRoute)
+        val projection = nearestRouteProjection(location.latitude, location.longitude)
+        currentRouteIndex = projection.segmentIndex
+        maybeReroute(location, projection.distanceMeters)
         val style = map?.style ?: return
         addNavigationMarker(style, location)
         announceNextManeuver(location)
-        var remaining = distanceFromRoute
-        for (i in nearestIndex until navigationPoints.lastIndex) {
+        var remaining = distanceBetween(location.latitude, location.longitude, projection.point.latitude(), projection.point.longitude())
+        val segmentEnd = navigationPoints[projection.segmentIndex + 1]
+        remaining += distanceBetween(projection.point.latitude(), projection.point.longitude(), segmentEnd.latitude(), segmentEnd.longitude())
+        for (i in projection.segmentIndex + 1 until navigationPoints.lastIndex) {
             val a = navigationPoints[i]
             val b = navigationPoints[i + 1]
             remaining += distanceBetween(a.latitude(), a.longitude(), b.latitude(), b.longitude())
@@ -1483,16 +1482,36 @@ class MainActivity : AppCompatActivity() {
         navigationSource = style.getSource(NAV_SOURCE_ID) as? GeoJsonSource
     }
 
-    private fun nearestRoutePointIndex(lat: Double, lon: Double): Int {
-        if (navigationPoints.isEmpty()) return 0
-        var bestIndex = currentRouteIndex.coerceIn(0, navigationPoints.lastIndex)
+    /** Projects the GPS fix onto the nearest forward route segment, avoiding corner false positives. */
+    private fun nearestRouteProjection(lat: Double, lon: Double): RouteProjection {
+        if (navigationPoints.size < 2) return RouteProjection(0, navigationPoints.first(), 0.0)
+        val metersPerLat = 111320.0
+        val metersPerLon = (111320.0 * kotlin.math.cos(Math.toRadians(lat))).coerceAtLeast(1.0)
+        var bestIndex = currentRouteIndex.coerceIn(0, navigationPoints.lastIndex - 1)
         var bestDistance = Double.MAX_VALUE
-        for (index in bestIndex..navigationPoints.lastIndex) {
-            val point = navigationPoints[index]
-            val d = distanceBetween(lat, lon, point.latitude(), point.longitude())
-            if (d < bestDistance) { bestDistance = d; bestIndex = index }
+        var bestPoint = navigationPoints[bestIndex]
+        val firstIndex = (currentRouteIndex - 1).coerceAtLeast(0)
+        for (index in firstIndex until navigationPoints.lastIndex) {
+            val a = navigationPoints[index]
+            val b = navigationPoints[index + 1]
+            val ax = (a.longitude() - lon) * metersPerLon
+            val ay = (a.latitude() - lat) * metersPerLat
+            val bx = (b.longitude() - lon) * metersPerLon
+            val by = (b.latitude() - lat) * metersPerLat
+            val dx = bx - ax
+            val dy = by - ay
+            val denominator = dx * dx + dy * dy
+            val fraction = if (denominator <= 0.0001) 0.0 else (-(ax * dx + ay * dy) / denominator).coerceIn(0.0, 1.0)
+            val projectedX = ax + fraction * dx
+            val projectedY = ay + fraction * dy
+            val distance = kotlin.math.hypot(projectedX, projectedY)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestIndex = index
+                bestPoint = Point.fromLngLat(lon + projectedX / metersPerLon, lat + projectedY / metersPerLat)
+            }
         }
-        return bestIndex
+        return RouteProjection(bestIndex, bestPoint, bestDistance)
     }
 
     private fun announceNextManeuver(location: Location) {
@@ -1792,6 +1811,7 @@ class MainActivity : AppCompatActivity() {
     private data class PlaceResult(val label: String, val lat: Double, val lon: Double, val shortLabel: String = label)
     private data class RouteStep(val point: Point, val instruction: String, val distanceMeters: Double, var announced: Boolean = false)
     private data class RouteData(val points: List<Point>, val durationSeconds: Int, val distanceMeters: Double, val steps: List<RouteStep>, val offline: Boolean = false)
+    private data class RouteProjection(val segmentIndex: Int, val point: Point, val distanceMeters: Double)
 
     companion object {
         private const val LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
