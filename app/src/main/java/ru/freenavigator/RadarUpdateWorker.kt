@@ -89,7 +89,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 if (id.isNotBlank()) merged[id] = camera
             }
             val combined = org.json.JSONArray()
-            merged.values.takeLast(5000).forEach(combined::put)
+            merged.values.toList().takeLast(5000).forEach { camera -> combined.put(camera) }
             prefs.edit()
                 .putString("radar_cache", combined.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())
