@@ -11,8 +11,8 @@ android {
         applicationId = "ru.freenavigator"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "0.5.4"
+        versionCode = 26
+        versionName = "0.5.5"
     }
 
     compileOptions {
