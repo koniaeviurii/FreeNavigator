@@ -116,6 +116,9 @@ class MainActivity : AppCompatActivity() {
     private val announcedRadarIds = mutableSetOf<String>()
     private var lastNavigationLocation: Location? = null
     private var pendingNavigation: RouteData? = null
+    private var rerouteInProgress = false
+    private var offRouteFixes = 0
+    private var lastRerouteAt = 0L
 
     private val locationPermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -856,6 +859,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         navigationPoints = points
+        rerouteInProgress = false
+        offRouteFixes = 0
+        lastRerouteAt = 0L
         navigationDistanceMeters = distanceMeters
         navigationDurationSeconds = durationSeconds
         navigationSteps = route.steps
@@ -932,14 +938,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateNavigation(location: Location) {
         if (!navigationActive) return
         checkRadarProximity(location)
-        val style = map?.style ?: return
-        addNavigationMarker(style, location)
         val nearestIndex = nearestRoutePointIndex(location.latitude, location.longitude)
         currentRouteIndex = nearestIndex
-        announceNextManeuver(location)
-        val nearestPoint = navigationPoints[nearestIndex]
-        var remaining = distanceBetween(location.latitude, location.longitude,
+        val nearestPoint = navigationPoints.getOrNull(nearestIndex) ?: return
+        val distanceFromRoute = distanceBetween(location.latitude, location.longitude,
             nearestPoint.latitude(), nearestPoint.longitude())
+        maybeReroute(location, distanceFromRoute)
+        val style = map?.style ?: return
+        addNavigationMarker(style, location)
+        announceNextManeuver(location)
+        var remaining = distanceFromRoute
         for (i in nearestIndex until navigationPoints.lastIndex) {
             val a = navigationPoints[i]
             val b = navigationPoints[i + 1]
@@ -949,8 +957,6 @@ class MainActivity : AppCompatActivity() {
         val fraction = (remaining / total).coerceIn(0.0, 1.0)
         routeProgress?.progress = ((1.0 - fraction) * 1000).toInt().coerceIn(0, 1000)
         val minutes = (navigationDurationSeconds * fraction / 60.0).toInt().coerceAtLeast(1)
-        val kmText = if (remaining >= 1000) String.format(java.util.Locale.getDefault(), "%.1f км", remaining / 1000.0)
-            else "${remaining.toInt()} м"
         navigationInfo?.text = "В пути · около $minutes мин"
         routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", (remaining / 1000.0).coerceAtLeast(0.0))} км"
         val arrival = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(System.currentTimeMillis() + minutes * 60_000L))
@@ -965,6 +971,53 @@ class MainActivity : AppCompatActivity() {
             navigationInfo?.text = "Вы прибыли к месту назначения"
             routeRemainingText?.text = "До конца маршрута: 0,0 км"
             if (!foregroundGuidanceStarted && !arrivalAnnounced) { speak("Вы прибыли к месту назначения"); arrivalAnnounced = true }
+        }
+    }
+
+    /** Rebuilds the route after several reliable GPS fixes show that the driver left it. */
+    private fun maybeReroute(location: Location, distanceFromRoute: Double) {
+        if (!navigationActive || rerouteInProgress || navigationPoints.size < 2) return
+        if (location.hasAccuracy() && location.accuracy > 45f) {
+            offRouteFixes = 0
+            return
+        }
+        if (distanceFromRoute > 70.0) offRouteFixes++ else offRouteFixes = 0
+        val now = System.currentTimeMillis()
+        if (offRouteFixes < 3 || now - lastRerouteAt < 20_000L) return
+
+        val destination = navigationPoints.last()
+        val originLat = location.latitude
+        val originLon = location.longitude
+        rerouteInProgress = true
+        lastRerouteAt = now
+        navigationInfo?.text = "Отклонение от маршрута · перестраиваем…"
+        screenScope.launch {
+            try {
+                val replacement = withContext(Dispatchers.IO) {
+                    osrmRoutes(originLat, originLon, destination.latitude(), destination.longitude()).firstOrNull()
+                        ?: throw IllegalStateException("Новый путь не найден")
+                }
+                if (!navigationActive) return@launch
+                navigationPoints = replacement.points
+                navigationDistanceMeters = replacement.distanceMeters
+                navigationDurationSeconds = replacement.durationSeconds
+                navigationSteps = replacement.steps
+                nextVoiceStepIndex = 0
+                currentRouteIndex = 0
+                arrivalAnnounced = false
+                routeLine = LineString.fromLngLats(replacement.points)
+                map?.style?.let { addRouteLine(it) }
+                startForegroundGuidance(replacement)
+                speak("Маршрут перестроен")
+                navigationInfo?.text = "Новый маршрут построен"
+            } catch (error: Exception) {
+                if (navigationActive) {
+                    navigationInfo?.text = "Маршрут не перестроен · следуйте к синей линии"
+                }
+            } finally {
+                rerouteInProgress = false
+                offRouteFixes = 0
+            }
         }
     }
 
@@ -1020,6 +1073,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopNavigation() {
         navigationActive = false
+        rerouteInProgress = false
+        offRouteFixes = 0
         foregroundGuidanceStarted = false
         try { startService(Intent(this, NavigationForegroundService::class.java).setAction(NavigationForegroundService.ACTION_STOP)) } catch (_: Exception) { }
         pendingNavigation = null
