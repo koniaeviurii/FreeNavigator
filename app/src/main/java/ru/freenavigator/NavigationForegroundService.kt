@@ -213,17 +213,25 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     .takeIf { it.isNotBlank() }
                     ?.let { " Ограничение скорости $it." }
                     .orEmpty()
+                val roundedDistance = ((distance / 50.0).roundToInt() * 50).coerceAtLeast(50)
                 val event = when {
-                    currentStage == 0 && distance <= 60.0 ->
-                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
-                    currentStage == 0 && distance <= 300.0 ->
-                        RadarEvent(id, distance, 2, "Через 300 метров камера контроля скорости.$limit")
-                    currentStage == 0 && distance <= 800.0 ->
-                        RadarEvent(id, distance, 1, "Через 800 метров камера контроля скорости.$limit")
+                    currentStage == 0 && distance <= 800.0 -> {
+                        val stage = when {
+                            distance <= 60.0 -> 3
+                            distance <= 300.0 -> 2
+                            else -> 1
+                        }
+                        val warning = if (stage == 3) {
+                            "Камера контроля скорости рядом.$limit"
+                        } else {
+                            "Через $roundedDistance метров камера контроля скорости.$limit"
+                        }
+                        RadarEvent(id, distance, stage, warning)
+                    }
+                    currentStage == 1 && distance <= 300.0 ->
+                        RadarEvent(id, distance, 2, "Через $roundedDistance метров камера контроля скорости.$limit")
                     currentStage == 1 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
-                    currentStage == 1 && distance <= 300.0 ->
-                        RadarEvent(id, distance, 2, "Через 300 метров камера контроля скорости.$limit")
                     currentStage == 2 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
                     else -> null
