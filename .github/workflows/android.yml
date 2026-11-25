@@ -3,10 +3,14 @@ name: FreeNavigator Android build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ build-check-0.4.0 ]
 
 permissions:
   contents: read
+
+concurrency:
+  group: freenavigator-android-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   JAVA_VERSION: '17'
@@ -15,6 +19,7 @@ env:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -30,8 +35,15 @@ jobs:
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
+      - name: Verify project structure
+        run: |
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+
       - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Verify APK exists
         run: test -s app/build/outputs/apk/debug/app-debug.apk
@@ -39,7 +51,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FreeNavigator-0.3.1-debug-apk
+          name: FreeNavigator-build-check-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
