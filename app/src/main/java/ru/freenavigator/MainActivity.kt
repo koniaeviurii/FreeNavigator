@@ -606,7 +606,7 @@ class MainActivity : AppCompatActivity() {
             connectTimeout = 20000
             readTimeout = 60000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.5.3 (Android offline road graph)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.5.4 (Android offline road graph)")
             setRequestProperty("Accept", "application/json")
         }
         try {
@@ -639,7 +639,7 @@ class MainActivity : AppCompatActivity() {
                 .dispatcher(dispatcher)
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
-                        .header("User-Agent", "FreeNavigator/0.5.3 (Android offline map navigation)")
+                        .header("User-Agent", "FreeNavigator/0.5.4 (Android offline map navigation)")
                         .build()
                     chain.proceed(request)
                 }
@@ -1167,7 +1167,7 @@ class MainActivity : AppCompatActivity() {
             connectTimeout = 12000
             readTimeout = 15000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.5.3 (Android navigation app)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.5.4 (Android navigation app)")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru")
         }
