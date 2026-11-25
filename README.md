@@ -44,3 +44,8 @@
 ## Сборка
 
 GitHub Actions собирает debug APK на Java 17 и Gradle 8.9. APK и архив исходников публикуются как артефакты запуска workflow.
+
+## 0.5.7
+
+- Fixed vertical scrolling of the navigation drawer on phone screens.
+- Added an on-screen next-maneuver arrow and distance during active route guidance.
