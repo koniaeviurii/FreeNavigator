@@ -31,7 +31,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 connectTimeout = 15000
                 readTimeout = 30000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "FreeNavigator/0.5.6 (Android navigation app)")
+                setRequestProperty("User-Agent", "FreeNavigator/0.5.9 (Android navigation app)")
             }
             val body = try {
                 val code = connection.responseCode

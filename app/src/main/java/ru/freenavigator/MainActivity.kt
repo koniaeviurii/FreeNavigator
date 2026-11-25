@@ -543,7 +543,9 @@ class MainActivity : AppCompatActivity() {
             } else stopRadarMonitoring()
             toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
         }
-        drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
+        
+        drawerItem(content, "⬇", "База камер", radarDatabaseStatus()) { showRadarDatabaseDialog() }
+drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
             infoDialog("Настройки", "Дополнительные настройки добавим по мере подключения функций.")
         }
         // Keep the version footer fixed; only the menu items participate in scrolling.
@@ -1835,8 +1837,47 @@ class MainActivity : AppCompatActivity() {
         return (if (radarEnabled) "Включён" else "Выключен") + " · база: $date"
     }
 
+    private fun radarDatabaseStatus(): String {
+        val count = try { org.json.JSONArray(getSharedPreferences("free_navigator_settings", MODE_PRIVATE).getString("radar_cache", "[]")).length() } catch (_: Exception) { 0 }
+        return if (count > 0) "Камер: $count · " + radarStatusText().substringAfter("база: ") else "База не загружена"
+    }
+
+    private fun showRadarDatabaseDialog() {
+        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+        val count = try { org.json.JSONArray(prefs.getString("radar_cache", "[]")).length() } catch (_: Exception) { 0 }
+        val updated = prefs.getLong("radar_updated_at", 0L)
+        val date = if (updated > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated)) else "нет"
+        AlertDialog.Builder(this)
+            .setTitle("База камер")
+            .setMessage("Загружено камер: $count\nПоследнее обновление: $date\n\nЗагрузка использует ваше текущее местоположение и интернет.")
+            .setPositiveButton("Загрузить / обновить") { _, _ ->
+                if (!radarEnabled) {
+                    radarEnabled = true
+                    prefs.edit().putBoolean("radar_enabled", true).apply()
+                    startRadarMonitoring()
+                }
+                val loc = currentDeviceLocation()
+                if (loc != null) {
+                    enqueueRadarRefresh(loc.latitude, loc.longitude, true)
+                    toast("Загрузка базы камер начата")
+                } else {
+                    toast("Получаем местоположение для загрузки базы")
+                    requestLocationOrCenter()
+                }
+            }
+            .setNegativeButton(if (radarEnabled) "Выключить антирадар" else "Включить антирадар") { _, _ ->
+                radarEnabled = !radarEnabled
+                prefs.edit().putBoolean("radar_enabled", radarEnabled).apply()
+                if (radarEnabled) startRadarMonitoring() else stopRadarMonitoring()
+                refreshRadarMarkers()
+                toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
+            }
+            .setNeutralButton("Закрыть", null)
+            .show()
+    }
+
     private fun scheduleRadarUpdates() {
-        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val periodic = PeriodicWorkRequestBuilder<RadarUpdateWorker>(24, TimeUnit.HOURS)
             .setConstraints(constraints).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -1853,10 +1894,10 @@ class MainActivity : AppCompatActivity() {
         val moved = oldLat == 0.0 || distanceBetween(latitude, longitude, oldLat, oldLon) > 15000.0
         if (!force && updated > 0L && System.currentTimeMillis() - updated < 24L * 60L * 60L * 1000L && !moved) return
         val request = OneTimeWorkRequestBuilder<RadarUpdateWorker>()
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInputData(workDataOf("center_lat" to latitude, "center_lon" to longitude))
             .build()
-        WorkManager.getInstance(this).enqueueUniqueWork("freenavigator-radar-refresh", ExistingWorkPolicy.KEEP, request)
+        WorkManager.getInstance(this).enqueueUniqueWork("freenavigator-radar-refresh", if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
     }
 
     private fun startRadarMonitoring() {
