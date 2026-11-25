@@ -1,70 +1,40 @@
-# Free Navigator — developer preview 0.3.1
+# FreeNavigator 0.5.2
 
-Android project for a Russian-language navigation app. This version replaces the placeholder screen with a real online vector map.
+Русскоязычный Android-навигатор на Kotlin, MapLibre Native и OpenStreetMap.
 
-## Implemented in 0.3.1
-- MapLibre Native Android map using OpenFreeMap's Liberty style.
-- Light/dark map style switch.
-- Place/address search using the Photon geocoding demo API.
-- Map camera moves to a selected search result.
-- Button to center the map on the last known Android device location.
-- Visible blue position marker, restored when the map style changes.
-- Search fallback: Photon first, then OpenStreetMap Nominatim if Photon is unavailable.
-- Route planning with selectable origin and destination.
-- Live GPS-follow mode after tapping “Начать маршрут”.
-- Blue directional arrow, map camera following the current position, remaining distance/time estimate, and route stop button.
-- Compact route progress panel with start time, estimated arrival, remaining distance caption and stop button.
-- Route alternatives requested from OSRM when the public routing service provides them.
-- Five-second full-route preview after pressing “Начать маршрут”.
-- Russian TTS announcements for route readiness, maneuver steps when supplied by OSRM, route start and arrival.
-- Search opened from the side menu; the old bottom search control has been removed.
-- Compact search result labels: place name, type and city when available.
-- Anti-radar cache downloads nearby fixed speed-camera nodes from OpenStreetMap Overpass, keeps the last successful dataset locally, checks for updates on app start/location change and schedules a daily WorkManager refresh.
-- Foreground GPS proximity monitoring with Russian voice warning within approximately 800 metres of a cached camera.
+## Реализовано
 
-## Not implemented yet
-- Lane guidance, traffic-light/incident warnings and live traffic data.
-- Mobile radar reports and community-reported mobile cameras.
-- Background navigation service and guaranteed continuous tracking while the app is not visible.
-- Production geocoder/routing backend and provider SLA.
+- Векторная карта OpenFreeMap, светлая и тёмная темы, 2D/3D наклон.
+- Поиск через Photon и Nominatim с локальным поиском по импортированной GeoJSON-базе.
+- Построение онлайн-маршрутов через публичный OSRM, варианты маршрута и предварительный просмотр.
+- GPS-ведение, стрелка положения, расчёт оставшегося расстояния и времени, голосовые подсказки на русском языке.
+- Перестроение маршрута после нескольких надёжных GPS-фиксаций за пределами линии маршрута.
+- Стационарные камеры из OSM Overpass, локальный кэш и ежедневное обновление по Wi-Fi.
+- Офлайн-карты MapLibre: загрузка видимой области текущего стиля, список сохранённых областей, пауза, продолжение и удаление.
+- Для загрузки карт используется отдельный User-Agent и ограничение сетевых запросов до четырёх одновременно. Размер контролируется по фактическому объёму загруженных ресурсов; загрузка останавливается при достижении 50 МБ. Ограничение MapLibre — 3 000 плиток.
+- Офлайн-дорожная сеть: загрузка автомобильных дорог OSM в радиусе 8 км от центра карты, сохранение в SQLite, объединение нескольких загруженных областей.
+- Офлайн-маршрутизация по сохранённому графу дорог алгоритмом A* с учётом одностороннего движения и примерных скоростей дорог. В режиме «Автоматически» локальный граф используется при недоступности онлайн-маршрутизатора; в режиме «Офлайн» внешние геокодеры и маршрутизаторы не вызываются.
 
-## Data providers and limitations
-The map style is served by OpenFreeMap and map data is based on OpenStreetMap. Search uses the public Photon demo endpoint with OpenStreetMap Nominatim as a fallback. Both are public services with usage policies and no guaranteed availability. These public services are suitable for development/testing, not a guaranteed production backend. Availability, rate limits and coverage can change. Do not treat this build as a finished navigation product.
+## Как пользоваться офлайн-функциями
 
-## Build
-Open this folder in Android Studio (JDK 17; Android SDK platform 35), allow Gradle to download dependencies, then run `:app:assembleDebug`. The project has not yet been built or device-tested in this environment. Verify the resulting APK on a real device before release.
+1. При наличии интернета приблизьте карту к нужному району.
+2. В боковом меню откройте «Загрузка офлайн-карт» и сохраните видимую область.
+3. В том же меню откройте «Загрузка дорожных данных», чтобы получить дорожный граф в радиусе 8 км от центра карты. Для длинного маршрута заранее загрузите несколько областей.
+4. Для офлайн-поиска мест импортируйте GeoJSON с точками через «Импорт офлайн-поиска».
+5. В «Карта и режим» выберите «Офлайн». Поиск будет использовать локальную базу, маршрут — локальную дорожную сеть.
 
+## Ограничения и то, что ещё требует проверки
 
-## Версия 0.2.9 — исправления маршрута
+- Офлайн-карты хранят ресурсы выбранного стиля. Светлую и тёмную темы следует загружать отдельно.
+- Ограничение размера 50 МБ контролируется по событиям загрузки и может иметь небольшое превышение до получения следующего события статуса.
+- Офлайн-маршрут возможен только внутри связной части загруженного дорожного графа. Данные Overpass могут быть неполными; для дальних поездок нужно заранее загрузить несколько соседних областей.
+- Скорости дорог и время офлайн-маршрута являются оценочными; пробки, перекрытия и дорожные события в локальном графе не учитываются.
+- Голосовые подсказки зависят от русского голоса TTS на Android. Проверка реальной работы на Samsung Galaxy S25 Ultra ещё необходима.
+- Камеры — только стационарные объекты, размеченные в OSM; мобильные радары не определяются.
+- Дорожные знаки, светофоры, полосы движения и живой трафик пока не подключены.
+- Photon, Nominatim, OSRM и Overpass — публичные сервисы без гарантированного SLA. Условия использования и доступность могут меняться.
+- Успешная облачная сборка не заменяет проверку установки, GPS, офлайн-режима и речи на физическом телефоне.
 
-- После построения маршрут автоматически помещается целиком в видимую область карты.
-- Убрано дублирующее сообщение о синей линии из окна построенного маршрута.
-- Если разрешение GPS запрашивается при нажатии «Начать маршрут», ведение запускается автоматически после предоставления разрешения.
-- Линия маршрута хранится в состоянии экрана и повторно добавляется после смены стиля карты.
+## Сборка
 
-## Автоматическая сборка APK
-
-В репозитории настроен GitHub Actions workflow `.github/workflows/android.yml`:
-- запускается при отправке изменений в ветку `main` или вручную через **Actions → FreeNavigator Android build → Run workflow**;
-- собирает `:app:assembleDebug` на Java 17 и Gradle 8.9;
-- проверяет наличие APK и публикует его как артефакт `FreeNavigator-0.3.1-debug-apk` на 14 дней.
-
-После успешного запуска APK можно получить на странице запуска workflow в разделе **Artifacts**. Сборка в облаке и проверка установки на физическом телефоне — разные этапы; перед использованием нужно установить APK и проверить GPS, построение маршрута и переключение стиля карты.
-
-## Дополнение к исправлениям 0.2.9
-
-- При повторной загрузке стиля карты активная GPS-стрелка восстанавливается вместе с линией маршрута.
-- Обновление позиции и направления вынесено в общую функцию, чтобы одинаково работать при обычном GPS-обновлении и восстановлении карты.
-
-
-## Важные ограничения версии 0.3.1
-
-- База камер берётся из OpenStreetMap через Overpass и может быть неполной или устаревшей. Сейчас это стационарные точки, отмеченные в OSM; мобильные радары не покрываются.
-- Голосовые предупреждения зависят от установленного на Android движка синтеза речи и доступного русского голоса.
-- Публичный OSRM может вернуть только один маршрут, даже при запросе альтернатив. Пошаговые подсказки ограничены теми манёврами, которые вернул сервис.
-- Непрерывной фоновой навигации в этой версии нет: GPS-антирадар работает, пока приложение находится на экране; ежедневное обновление базы выполняется WorkManager при наличии сети.
-- Реальная сборка APK и проверка на телефоне должны быть выполнены через GitHub Actions. В текущей среде нет Android SDK/Gradle, поэтому сборка здесь не подтверждена.
-
-
-### Build 0.4.8
-Radar refresh now preserves the existing offline camera cache when a refresh response contains no valid camera points.
+GitHub Actions собирает debug APK на Java 17 и Gradle 8.9. APK и архив исходников публикуются как артефакты запуска workflow.
