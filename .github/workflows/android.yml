@@ -69,6 +69,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FreeNavigator-0.4.8-source
-          path: FreeNavigator-0.4.7-source.zip
+          path: FreeNavigator-0.4.8-source.zip
           if-no-files-found: error
           retention-days: 14
