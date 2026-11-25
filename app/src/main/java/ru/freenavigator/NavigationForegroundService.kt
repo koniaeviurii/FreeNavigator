@@ -98,24 +98,13 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             val thresholds = intArrayOf(800, 300, 60)
             val previous = previousStepDistances[index]
             if (previous == Double.MAX_VALUE) {
-                // On the first GPS fix, announce only the next upcoming threshold.
-                // Never announce a 300 m warning while the manoeuvre is still farther than 800 m.
-                when {
-                    distance <= 60.0 -> {
-                        speak("Сейчас. ${instructions[index]}")
-                        announced[index].fill(true)
-                    }
-                    distance <= 300.0 -> {
-                        announced[index][0] = true
-                        announced[index][1] = true
-                        speak("Через 60 метров. ${instructions[index]}")
-                        announced[index][2] = true
-                    }
-                    distance <= 800.0 -> {
-                        announced[index][0] = true
-                        speak("Через 300 метров. ${instructions[index]}")
-                        announced[index][1] = true
-                    }
+                // A GPS fix may arrive after one or more warning distances have already passed.
+                // Mark passed thresholds silently; speak only when the next threshold is crossed.
+                if (distance <= 800.0) announced[index][0] = true
+                if (distance <= 300.0) announced[index][1] = true
+                if (distance <= 60.0) {
+                    announced[index].fill(true)
+                    speak("Сейчас. ${instructions[index]}")
                 }
             } else {
                 for (i in thresholds.indices) {
