@@ -30,7 +30,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 connectTimeout = 15000
                 readTimeout = 30000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "FreeNavigator/0.4.3 (Android navigation app)")
+                setRequestProperty("User-Agent", "FreeNavigator/0.4.8 (Android navigation app)")
             }
             val body = try {
                 val code = connection.responseCode
@@ -54,8 +54,8 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                     put("direction_backward", tags.optString("camera:direction:backward", ""))
                 })
             }
-            // A malformed/filtered non-empty response must never erase a useful previous cache.
-            if (elements.length() > 0 && normalized.length() == 0) return Result.retry()
+            // Empty or filtered responses must never erase a useful previous cache.
+            if (normalized.length() == 0) return Result.retry()
             prefs.edit()
                 .putString("radar_cache", normalized.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())
