@@ -1,6 +1,8 @@
 package ru.freenavigator
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import java.net.HttpURLConnection
@@ -11,6 +13,12 @@ import org.json.JSONObject
 /** Downloads nearby fixed speed-camera points from OpenStreetMap/Overpass and keeps them offline. */
 class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
+        val connectivity = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeNetwork = connectivity.activeNetwork ?: return Result.retry()
+        val capabilities = connectivity.getNetworkCapabilities(activeNetwork) ?: return Result.retry()
+        // Deliberately reject mobile data and Ethernet: radar refresh is Wi-Fi-only.
+        if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return Result.retry()
+
         val prefs = applicationContext.getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
         val lat = inputData.getDouble("center_lat", prefs.getFloat("radar_center_lat", 0f).toDouble())
         val lon = inputData.getDouble("center_lon", prefs.getFloat("radar_center_lon", 0f).toDouble())
@@ -22,7 +30,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 connectTimeout = 15000
                 readTimeout = 30000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "FreeNavigator/0.3.1 (Android navigation app)")
+                setRequestProperty("User-Agent", "FreeNavigator/0.4.0 (Android navigation app)")
             }
             val body = try {
                 val code = connection.responseCode
@@ -35,15 +43,19 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 val item = elements.optJSONObject(i) ?: continue
                 if (!item.has("lat") || !item.has("lon")) continue
                 val tags = item.optJSONObject("tags") ?: JSONObject()
-                val record = JSONObject().apply {
+                normalized.put(JSONObject().apply {
                     put("id", item.optString("id"))
                     put("lat", item.optDouble("lat"))
                     put("lon", item.optDouble("lon"))
                     put("maxspeed", tags.optString("maxspeed", ""))
                     put("name", tags.optString("name", ""))
-                }
-                normalized.put(record)
+                    put("direction", tags.optString("camera:direction", tags.optString("direction", "")))
+                    put("direction_forward", tags.optString("camera:direction:forward", ""))
+                    put("direction_backward", tags.optString("camera:direction:backward", ""))
+                })
             }
+            // A malformed/filtered non-empty response must never erase a useful previous cache.
+            if (elements.length() > 0 && normalized.length() == 0) return Result.retry()
             prefs.edit()
                 .putString("radar_cache", normalized.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())
