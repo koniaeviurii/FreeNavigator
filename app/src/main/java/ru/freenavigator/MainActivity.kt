@@ -1488,6 +1488,11 @@ class MainActivity : AppCompatActivity() {
             location.latitude, location.longitude,
             step.point.latitude(), step.point.longitude()
         )
+        if (foregroundGuidanceStarted && distance <= 35.0) {
+            nextVoiceStepIndex++
+            updateManeuverDisplay(location)
+            return
+        }
         val rounded = if (distance < 100.0) distance.toInt().coerceAtLeast(0)
             else ((distance / 50.0).roundToInt() * 50)
         val lower = step.instruction.lowercase(Locale("ru", "RU"))
