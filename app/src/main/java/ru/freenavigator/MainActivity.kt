@@ -545,7 +545,8 @@ class MainActivity : AppCompatActivity() {
         }
         
         drawerItem(content, "⬇", "База камер", radarDatabaseStatus()) { showRadarDatabaseDialog() }
-drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
+drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { showExitDialog() }
+        drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
             infoDialog("Настройки", "Дополнительные настройки добавим по мере подключения функций.")
         }
         // Keep the version footer fixed; only the menu items participate in scrolling.
@@ -558,7 +559,7 @@ drawerItem(content, "⚙", "Настройки", "Параметры навиг�
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.8"
+            text = "FreeNavigator · версия 0.5.9"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -1829,6 +1830,20 @@ drawerItem(content, "⚙", "Настройки", "Параметры навиг�
         } catch (_: Exception) {
             toast("Не удалось определить местоположение")
         }
+    }
+
+    private fun showExitDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Выход из FreeNavigator")
+            .setMessage("Закрыть навигатор и остановить навигацию и антирадар?")
+            .setPositiveButton("Выйти") { _, _ ->
+                stopNavigation()
+                stopRadarMonitoring()
+                try { speech?.stop() } catch (_: Exception) {}
+                finishAffinity()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun radarStatusText(): String {
