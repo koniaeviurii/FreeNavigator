@@ -582,7 +582,7 @@ class MainActivity : AppCompatActivity() {
                             for (endpoint in endpoints) {
                                 try {
                                     val body = httpGetLong(endpoint + encoded)
-                                    imported = useOfflineRoadGraph { it.replaceFromOverpassJson(body) }
+                                    imported = useOfflineRoadGraph { it.mergeFromOverpassJson(body) }
                                     break
                                 } catch (error: Exception) { lastError = error }
                             }
