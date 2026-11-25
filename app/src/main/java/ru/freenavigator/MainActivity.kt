@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.speech.tts.TextToSpeech
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -119,6 +120,8 @@ class MainActivity : AppCompatActivity() {
     private var nextVoiceStepIndex = 0
     private var currentRouteIndex = 0
     private var navigationInfo: TextView? = null
+    private var maneuverInfo: TextView? = null
+    private var maneuverIcon: TextView? = null
     private var navigationPanel: LinearLayout? = null
     private var bottomControlsView: LinearLayout? = null
     private var routeProgress: ProgressBar? = null
@@ -326,6 +329,31 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(9).toFloat()
             visibility = View.GONE
         }
+        val maneuverRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(9), dp(10), dp(9))
+            setBackgroundColor(0xFFEAF3FB.toInt())
+        }
+        maneuverIcon = TextView(this).apply {
+            text = "↑"
+            textSize = 30f
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF1769AA.toInt())
+        }
+        maneuverInfo = TextView(this).apply {
+            text = "Ожидаем маршрут…"
+            textSize = 15f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF173B5E.toInt())
+            setPadding(dp(12), 0, 0, 0)
+        }
+        maneuverRow.addView(maneuverIcon, LinearLayout.LayoutParams(dp(48), dp(48)))
+        maneuverRow.addView(maneuverInfo, LinearLayout.LayoutParams(0, -2, 1f))
+        navPanel.addView(maneuverRow, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
         val navTopRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -407,6 +435,9 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFFFFFFFF.toInt())
             elevation = dp(12).toFloat()
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(0, dp(24), 0, dp(12))
         }
         val heading = TextView(this).apply {
@@ -422,36 +453,36 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFF718399.toInt())
             setPadding(dp(22), 0, dp(16), dp(18))
         }
-        panel.addView(heading)
-        panel.addView(subheading)
-        drawerDivider(panel)
-        drawerItem(panel, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
-        drawerItem(panel, "⇩", "Загрузка офлайн-карт", "Сохранить текущую область на телефон") {
+        content.addView(heading)
+        content.addView(subheading)
+        drawerDivider(content)
+        drawerItem(content, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
+        drawerItem(content, "⇩", "Загрузка офлайн-карт", "Сохранить текущую область на телефон") {
             hideDrawer()
             showOfflineMapsDialog()
         }
-        drawerItem(panel, "⇩", "Загрузка дорожных данных", "Дороги для офлайн-маршрутов · радиус 8 км") {
+        drawerItem(content, "⇩", "Загрузка дорожных данных", "Дороги для офлайн-маршрутов · радиус 8 км") {
             hideDrawer()
             downloadOfflineRoads()
         }
-        drawerItem(panel, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
+        drawerItem(content, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
             offlineIndexPicker.launch(arrayOf("application/geo+json", "application/json", "application/*", "*/*"))
         }
-        drawerItem(panel, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
-        drawerDivider(panel)
-        drawerItem(panel, "⌕", "Поиск", "Найти адрес или место") {
+        drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
+        drawerDivider(content)
+        drawerItem(content, "⌕", "Поиск", "Найти адрес или место") {
             hideDrawer()
             toggleSearch()
         }
-        drawerItem(panel, "➤", "Проложить маршрут", "От моего местоположения до адреса") {
+        drawerItem(content, "➤", "Проложить маршрут", "От моего местоположения до адреса") {
             hideDrawer()
             startRoutePlanning()
         }
-        drawerItem(panel, "☆", "Избранное", "Сохранённые места") {
+        drawerItem(content, "☆", "Избранное", "Сохранённые места") {
             infoDialog("Избранное", "Сохранение избранных мест будет добавлено позже.")
         }
-        drawerDivider(panel)
-        drawerItem(panel, "◉", "Антирадар", radarStatusText()) {
+        drawerDivider(content)
+        drawerItem(content, "◉", "Антирадар", radarStatusText()) {
             radarEnabled = !radarEnabled
             getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
                 .edit().putBoolean("radar_enabled", radarEnabled).apply()
@@ -471,18 +502,25 @@ class MainActivity : AppCompatActivity() {
             } else stopRadarMonitoring()
             toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
         }
-        drawerItem(panel, "⚙", "Настройки", "Параметры навигатора") {
+        drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
             infoDialog("Настройки", "Дополнительные настройки добавим по мере подключения функций.")
         }
         val spacer = View(this)
-        panel.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
+        content.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
             text = "FreeNavigator · версия 0.5.2"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
         }
-        panel.addView(version)
+        content.addView(version)
+        val scrollView = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content, ScrollView.LayoutParams(-1, -2))
+        }
+        panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         return panel
     }
 
@@ -1417,6 +1455,7 @@ class MainActivity : AppCompatActivity() {
             val b = navigationPoints[i + 1]
             remaining += distanceBetween(a.latitude(), a.longitude(), b.latitude(), b.longitude())
         }
+        updateManeuverDisplay(location)
         val total = navigationDistanceMeters.coerceAtLeast(1.0)
         val fraction = (remaining / total).coerceIn(0.0, 1.0)
         routeProgress?.progress = ((1.0 - fraction) * 1000).toInt().coerceIn(0, 1000)
@@ -1435,6 +1474,35 @@ class MainActivity : AppCompatActivity() {
             navigationInfo?.text = "Вы прибыли к месту назначения"
             routeRemainingText?.text = "До конца маршрута: 0,0 км"
             if (!foregroundGuidanceStarted && !arrivalAnnounced) { speak("Вы прибыли к месту назначения"); arrivalAnnounced = true }
+        }
+    }
+
+    private fun updateManeuverDisplay(location: Location) {
+        val step = navigationSteps.getOrNull(nextVoiceStepIndex)
+        if (step == null) {
+            maneuverIcon?.text = "✓"
+            maneuverInfo?.text = "Маршрут завершён"
+            return
+        }
+        val distance = distanceBetween(
+            location.latitude, location.longitude,
+            step.point.latitude(), step.point.longitude()
+        )
+        val rounded = if (distance < 100.0) distance.toInt().coerceAtLeast(0)
+            else ((distance / 50.0).roundToInt() * 50)
+        val lower = step.instruction.lowercase(Locale("ru", "RU"))
+        maneuverIcon?.text = when {
+            "разворот" in lower -> "↶"
+            "налево" in lower || "лев" in lower -> "←"
+            "направо" in lower || "прав" in lower -> "→"
+            "круговом" in lower || "кольц" in lower -> "⟳"
+            "съезд" in lower -> "↗"
+            else -> "↑"
+        }
+        maneuverInfo?.text = if (distance <= 35.0) {
+            "Сейчас · ${step.instruction}"
+        } else {
+            "Через $rounded м · ${step.instruction}"
         }
     }
 
