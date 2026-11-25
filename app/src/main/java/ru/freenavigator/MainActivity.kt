@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var searchExpanded = false
     private var radarEnabled = true
     private var locationSource: GeoJsonSource? = null
+    private var radarSource: GeoJsonSource? = null
     private var lastKnownPoint: Point? = null
     private var searchResultSource: GeoJsonSource? = null
     private var selectedSearchPoint: Point? = null
@@ -561,11 +562,54 @@ class MainActivity : AppCompatActivity() {
         val styleUrl = if (darkTheme) DARK_STYLE else LIGHT_STYLE
         map?.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
             addLocationMarker(style)
+            addRadarMarkers(style)
             addSearchResultMarker(style)
             addRouteLine(style)
             if (navigationActive) lastNavigationLocation?.let { addNavigationMarker(style, it) }
         }
         statusText.text = if (darkTheme) "Тёмная карта · онлайн" else "Карта · онлайн"
+    }
+
+    /** Draws fixed speed cameras from the locally cached OSM radar database. */
+    private fun addRadarMarkers(style: Style) {
+        val source = GeoJsonSource(RADAR_SOURCE_ID, radarFeatureCollection())
+        style.addSource(source)
+        style.addLayer(CircleLayer(RADAR_LAYER_ID, RADAR_SOURCE_ID).withProperties(
+            circleRadius(7f),
+            circleColor("#D32F2F"),
+            circleStrokeColor("#FFFFFF"),
+            circleStrokeWidth(2.5f)
+        ))
+        radarSource = source
+    }
+
+    /** Refreshes markers after GPS movement or a successful background database update. */
+    private fun refreshRadarMarkers() {
+        radarSource?.setGeoJson(radarFeatureCollection())
+    }
+
+    private fun radarFeatureCollection(): org.maplibre.geojson.FeatureCollection {
+        if (!radarEnabled) return org.maplibre.geojson.FeatureCollection.fromFeatures(emptyArray())
+        val raw = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+            .getString("radar_cache", null) ?: return org.maplibre.geojson.FeatureCollection.fromFeatures(emptyArray())
+        val features = mutableListOf<Feature>()
+        try {
+            val cameras = org.json.JSONArray(raw)
+            for (i in 0 until cameras.length()) {
+                val camera = cameras.optJSONObject(i) ?: continue
+                val lat = camera.optDouble("lat", Double.NaN)
+                val lon = camera.optDouble("lon", Double.NaN)
+                if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) continue
+                val feature = Feature.fromGeometry(Point.fromLngLat(lon, lat))
+                feature.addStringProperty("id", camera.optString("id"))
+                val speed = camera.optString("maxspeed")
+                if (speed.isNotBlank()) feature.addStringProperty("maxspeed", speed)
+                features.add(feature)
+            }
+        } catch (_: Exception) {
+            // Keep the map usable if the cached radar JSON is damaged.
+        }
+        return org.maplibre.geojson.FeatureCollection.fromFeatures(features)
     }
 
     /** Adds a visible blue position marker and restores it after every style change. */
@@ -1248,6 +1292,7 @@ class MainActivity : AppCompatActivity() {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
             val listener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
+                    refreshRadarMarkers()
                     checkRadarProximity(location)
                     enqueueRadarRefresh(location.latitude, location.longitude, false)
                 }
@@ -1260,7 +1305,7 @@ class MainActivity : AppCompatActivity() {
             for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
                 if (manager.isProviderEnabled(provider)) manager.requestLocationUpdates(provider, 5000L, 20f, listener, mainLooper)
             }
-            currentDeviceLocation()?.let { checkRadarProximity(it); enqueueRadarRefresh(it.latitude, it.longitude, false) }
+            currentDeviceLocation()?.let { refreshRadarMarkers(); checkRadarProximity(it); enqueueRadarRefresh(it.latitude, it.longitude, false) }
         } catch (_: Exception) { radarLocationListener = null }
     }
 
@@ -1344,6 +1389,8 @@ class MainActivity : AppCompatActivity() {
         private const val LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
         private const val DARK_STYLE = "https://tiles.openfreemap.org/styles/dark"
         private const val LOCATION_SOURCE_ID = "free-navigator-location-source"
+        private const val RADAR_SOURCE_ID = "free-navigator-radar-source"
+        private const val RADAR_LAYER_ID = "free-navigator-radar-layer"
         private const val LOCATION_HALO_LAYER_ID = "free-navigator-location-halo"
         private const val LOCATION_DOT_LAYER_ID = "free-navigator-location-dot"
         private const val SEARCH_RESULT_SOURCE_ID = "free-navigator-search-result-source"
