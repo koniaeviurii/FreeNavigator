@@ -508,7 +508,7 @@ class MainActivity : AppCompatActivity() {
         val spacer = View(this)
         content.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.2"
+            text = "FreeNavigator · версия 0.5.7"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
