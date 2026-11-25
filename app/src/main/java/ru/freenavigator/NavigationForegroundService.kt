@@ -44,7 +44,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private val gpsWatchdog = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
-            if (lastFixAt > 0L && now - lastFixAt > 15000L && !waitingForGps) {
+            if (!arrived && lastFixAt > 0L && now - lastFixAt > 15000L && !waitingForGps) {
                 waitingForGps = true
                 updateNotification("Сигнал GPS потерян · ожидаем восстановления")
                 speak("Сигнал GPS потерян. Ожидаю восстановления.")
