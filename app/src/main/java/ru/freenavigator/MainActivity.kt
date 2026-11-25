@@ -1103,7 +1103,7 @@ class MainActivity : AppCompatActivity() {
                         else -> "Продолжайте движение"
                     }
                     val instruction = if (road != null && type != "arrive" && type != "depart") "$action на $road" else action
-                    if (type != "depart") steps.add(RouteStep(point, instruction, step.optDouble("distance")))
+                    if (type != "depart" && type != "arrive") steps.add(RouteStep(point, instruction, step.optDouble("distance")))
                 }
             }
             RouteData(points, route.optDouble("duration").toInt(), route.optDouble("distance"), steps)
