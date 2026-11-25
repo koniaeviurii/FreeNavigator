@@ -12,6 +12,8 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
@@ -35,6 +37,21 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private var nextStep = 0
     private var arrived = false
     private val radarWarningStages = mutableMapOf<String, Int>()
+    private val requestedProviders = mutableSetOf<String>()
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private var lastFixAt = 0L
+    private var waitingForGps = false
+    private val gpsWatchdog = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            if (lastFixAt > 0L && now - lastFixAt > 15000L && !waitingForGps) {
+                waitingForGps = true
+                updateNotification("Сигнал GPS потерян · ожидаем восстановления")
+                speak("Сигнал GPS потерян. Ожидаю восстановления.")
+            }
+            watchdogHandler.postDelayed(this, 5000L)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -57,6 +74,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         destinationLon = intent.getDoubleExtra(EXTRA_DEST_LON, Double.NaN)
         stepLatitudes = intent.getDoubleArrayExtra(EXTRA_STEP_LATS) ?: doubleArrayOf()
         stepLongitudes = intent.getDoubleArrayExtra(EXTRA_STEP_LONS) ?: doubleArrayOf()
+        removeLocationUpdates()
+        requestedProviders.clear()
         instructions = intent.getStringArrayExtra(EXTRA_INSTRUCTIONS) ?: emptyArray()
         val count = minOf(stepLatitudes.size, stepLongitudes.size, instructions.size)
         if (!destinationLat.isFinite() || !destinationLon.isFinite()) {
@@ -78,17 +97,12 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             if (!fine && !coarse) {
                 stopGuidance(); stopSelf(); return START_NOT_STICKY
             }
-            var requested = false
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (locationManager.isProviderEnabled(provider)) {
-                    locationManager.requestLocationUpdates(provider, 1000L, 2f, this)
-                    requested = true
-                }
-            }
-            if (!requested) {
-                stopGuidance(); stopSelf(); return START_NOT_STICKY
-            }
+            lastFixAt = System.currentTimeMillis()
+            waitingForGps = false
+            requestAvailableProviders()
             locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::onLocationChanged)
+            watchdogHandler.removeCallbacks(gpsWatchdog)
+            watchdogHandler.postDelayed(gpsWatchdog, 5000L)
         } catch (_: SecurityException) {
             stopGuidance(); stopSelf(); return START_NOT_STICKY
         }
@@ -97,6 +111,12 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onLocationChanged(location: Location) {
         if (arrived || !destinationLat.isFinite()) return
+        lastFixAt = System.currentTimeMillis()
+        if (waitingForGps) {
+            waitingForGps = false
+            updateNotification("GPS восстановлен · ведение активно")
+            speak("Сигнал GPS восстановлен")
+        }
         checkRadarProximity(location)
         while (nextStep < instructions.size) {
             val index = nextStep
@@ -279,6 +299,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         try {
             if (::locationManager.isInitialized) locationManager.removeUpdates(this)
         } catch (_: Exception) { }
+        requestedProviders.clear()
     }
 
     private fun stopGuidance() {
@@ -288,6 +309,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     }
 
     override fun onDestroy() {
+        watchdogHandler.removeCallbacks(gpsWatchdog)
         stopGuidance()
         tts?.stop()
         tts?.shutdown()
@@ -296,8 +318,41 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onBind(intent: Intent?): IBinder? = null
     @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-    override fun onProviderEnabled(provider: String) = Unit
-    override fun onProviderDisabled(provider: String) = Unit
+    private fun requestAvailableProviders() {
+        try {
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                if (locationManager.isProviderEnabled(provider) && provider !in requestedProviders) {
+                    locationManager.requestLocationUpdates(provider, 1000L, 2f, this)
+                    requestedProviders.add(provider)
+                }
+            }
+        } catch (_: SecurityException) {
+            speak("Нет разрешения на получение координат GPS")
+        } catch (_: Exception) { }
+    }
+
+    private fun updateNotification(message: String) {
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.notify(NOTIFICATION_ID, buildNotification(message))
+        } catch (_: Exception) { }
+    }
+
+    override fun onProviderEnabled(provider: String) {
+        requestAvailableProviders()
+    }
+
+    override fun onProviderDisabled(provider: String) {
+        val anyEnabled = try {
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                .any { locationManager.isProviderEnabled(it) }
+        } catch (_: Exception) { false }
+        if (!anyEnabled && !waitingForGps) {
+            waitingForGps = true
+            updateNotification("GPS выключен · включите местоположение")
+            speak("GPS выключен. Включите местоположение для продолжения маршрута.")
+        }
+    }
 
     companion object {
         const val ACTION_START = "ru.freenavigator.action.START_NAVIGATION"
