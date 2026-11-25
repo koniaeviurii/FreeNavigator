@@ -67,6 +67,19 @@ import org.maplibre.geojson.LineString
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.offline.OfflineManager
+import org.maplibre.android.offline.OfflineRegion
+import org.maplibre.android.offline.OfflineRegionStatus
+import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
+import org.maplibre.android.module.http.HttpRequestUtil
+import okhttp3.Dispatcher
+import okhttp3.OkHttpClient
+import kotlin.math.PI
+import kotlin.math.atan
+import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.sinh
+import kotlin.math.tan
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
@@ -161,6 +174,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         MapLibre.getInstance(this)
+        configureMapNetworking()
         super.onCreate(savedInstanceState)
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
@@ -411,8 +425,9 @@ class MainActivity : AppCompatActivity() {
         panel.addView(subheading)
         drawerDivider(panel)
         drawerItem(panel, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
-        drawerItem(panel, "⇩", "Загрузка офлайн-карт", "Сохранение областей на телефон") {
-            infoDialog("Офлайн-карты", "Загрузка карт ещё разрабатывается. Приложение не скачивает большие области с серверов, которые этого не разрешают.")
+        drawerItem(panel, "⇩", "Загрузка офлайн-карт", "Сохранить текущую область на телефон") {
+            hideDrawer()
+            showOfflineMapsDialog()
         }
         drawerItem(panel, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
             offlineIndexPicker.launch(arrayOf("application/geo+json", "application/json", "application/*", "*/*"))
@@ -536,6 +551,243 @@ class MainActivity : AppCompatActivity() {
         searchPanel.visibility = View.GONE
         val keyboard = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         keyboard.hideSoftInputFromWindow(searchInput.windowToken, 0)
+    }
+
+
+    /** Keep OpenFreeMap offline downloads within the provider's published limits. */
+    private fun configureMapNetworking() {
+        try {
+            val dispatcher = Dispatcher().apply {
+                maxRequests = 4
+                maxRequestsPerHost = 4
+            }
+            val client = OkHttpClient.Builder()
+                .dispatcher(dispatcher)
+                .addInterceptor { chain ->
+                    val request = chain.request().newBuilder()
+                        .header("User-Agent", "FreeNavigator/0.5.1 (Android offline map navigation)")
+                        .build()
+                    chain.proceed(request)
+                }
+                .build()
+            HttpRequestUtil.setOkHttpClient(client)
+            OfflineManager.getInstance(this).setOfflineMapboxTileCountLimit(3000L)
+        } catch (error: Exception) {
+            android.util.Log.e("FreeNavigator", "Map download configuration failed", error)
+        }
+    }
+
+    private fun showOfflineMapsDialog() {
+        val options = arrayOf("Скачать текущую область карты", "Мои офлайн-карты", "Закрыть")
+        AlertDialog.Builder(this)
+            .setTitle("Офлайн-карты")
+            .setItems(options) { dialog, which ->
+                when (which) {
+                    0 -> confirmCurrentAreaDownload()
+                    1 -> showOfflineRegionList()
+                    else -> dialog.dismiss()
+                }
+            }
+            .show()
+    }
+
+    private fun confirmCurrentAreaDownload() {
+        val bounds = try { map?.projection?.visibleRegion?.latLngBounds } catch (_: Exception) { null }
+        if (bounds == null) {
+            infoDialog("Карта ещё загружается", "Подождите, пока карта появится на экране, затем повторите попытку.")
+            return
+        }
+        val tileEstimate = estimateOfflineTileCount(bounds, 8, 14)
+        if (tileEstimate <= 0L || tileEstimate > 2500L) {
+            infoDialog(
+                "Область слишком большая",
+                "Сейчас расчётная загрузка — около $tileEstimate картографических плиток. Увеличьте масштаб карты до нужного города или района и повторите. Лимит одной загрузки — 3 000 плиток и 50 МБ."
+            )
+            return
+        }
+        val title = "Область карты"
+        val estimatedMb = tileEstimate * 12L / 1024L
+        AlertDialog.Builder(this)
+            .setTitle("Скачать офлайн-карту?")
+            .setMessage("Будет сохранена видимая область с уровнями масштаба 8–14.\n\nРасчётно: $tileEstimate плиток, около $estimatedMb МБ. Фактический размер зависит от данных карты. Загрузка выполняется только после вашего подтверждения.")
+            .setPositiveButton("Скачать") { _, _ -> startOfflineRegionDownload(bounds, title, tileEstimate) }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun estimateOfflineTileCount(bounds: LatLngBounds, minZoom: Int, maxZoom: Int): Long {
+        fun tileX(lon: Double, zoom: Int): Int {
+            val n = 1 shl zoom
+            return floor(((lon + 180.0) / 360.0 * n)).toInt().coerceIn(0, n - 1)
+        }
+        fun tileY(lat: Double, zoom: Int): Int {
+            val n = 1 shl zoom
+            val safeLat = lat.coerceIn(-85.05112878, 85.05112878)
+            val rad = Math.toRadians(safeLat)
+            return floor((1.0 - ln(tan(rad) + 1.0 / kotlin.math.cos(rad)) / PI) / 2.0 * n)
+                .toInt().coerceIn(0, n - 1)
+        }
+        var total = 0L
+        for (zoom in minZoom..maxZoom) {
+            val west = tileX(bounds.longitudeWest, zoom)
+            val east = tileX(bounds.longitudeEast, zoom)
+            val north = tileY(bounds.latitudeNorth, zoom)
+            val south = tileY(bounds.latitudeSouth, zoom)
+            val xCount = if (east >= west) east - west + 1 else (1 shl zoom) - west + east + 1
+            total += xCount.toLong() * (south - north + 1).coerceAtLeast(1)
+        }
+        return total
+    }
+
+    private fun startOfflineRegionDownload(bounds: LatLngBounds, name: String, estimatedTiles: Long) {
+        val styleUrl = if (darkTheme) DARK_STYLE else LIGHT_STYLE
+        val definition = OfflineTilePyramidRegionDefinition(
+            styleUrl, bounds, 8.0, 14.0, resources.displayMetrics.density, true
+        )
+        val metadata = JSONObject().apply {
+            put("name", name)
+            put("createdAt", System.currentTimeMillis())
+            put("estimatedTiles", estimatedTiles)
+        }.toString().toByteArray(Charsets.UTF_8)
+        val manager = OfflineManager.getInstance(this)
+        manager.createOfflineRegion(definition, metadata, object : OfflineManager.CreateOfflineRegionCallback {
+            override fun onCreate(region: OfflineRegion) {
+                region.setObserver(object : OfflineRegion.OfflineRegionObserver {
+                    override fun onStatusChanged(status: OfflineRegionStatus) {
+                        val sizeMb = status.completedResourceSize / (1024L * 1024L)
+                        if (status.completedResourceSize > 50L * 1024L * 1024L) {
+                            region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                            statusText.text = "Офлайн-карта остановлена: достигнут лимит 50 МБ"
+                            toast("Загрузка остановлена на лимите 50 МБ. Уменьшите область и загрузите её частями.")
+                            return
+                        }
+                        if (status.isComplete) {
+                            region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                            statusText.text = "Офлайн-карта сохранена"
+                            toast("Офлайн-карта полностью загружена · $sizeMb МБ")
+                        } else {
+                            val progress = if (status.requiredResourceCount > 0L)
+                                (status.completedResourceCount * 100L / status.requiredResourceCount).coerceIn(0L, 99L)
+                            else 0L
+                            statusText.text = "Офлайн-карта · $progress% · $sizeMb МБ"
+                        }
+                    }
+
+                    override fun onError(error: org.maplibre.android.offline.OfflineRegionError) {
+                        statusText.text = "Ошибка загрузки офлайн-карты"
+                        toast("Ошибка загрузки карты: ${error.message}")
+                    }
+
+                    override fun mapboxTileCountLimitExceeded(limit: Long) {
+                        region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                        toast("Достигнут лимит картографических плиток ($limit). Уменьшите область.")
+                    }
+                })
+                region.setDownloadState(OfflineRegion.STATE_ACTIVE)
+                toast("Загрузка офлайн-карты началась")
+            }
+
+            override fun onError(error: String) {
+                toast("Не удалось создать офлайн-карту: $error")
+            }
+        })
+    }
+
+    private fun showOfflineRegionList() {
+        OfflineManager.getInstance(this).listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+            override fun onList(offlineRegions: Array<OfflineRegion>) {
+                if (offlineRegions.isEmpty()) {
+                    infoDialog("Мои офлайн-карты", "Пока нет сохранённых областей. Чтобы скачать карту, сначала приблизьте нужный район на экране.")
+                    return
+                }
+                val labels = offlineRegions.map { region ->
+                    val metadata = try { JSONObject(String(region.metadata, Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
+                    val name = metadata.optString("name", "Область карты")
+                    "$name · ID ${region.id}"
+                }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Сохранённые области")
+                    .setItems(labels) { _, index -> showOfflineRegionActions(offlineRegions[index]) }
+                    .setNegativeButton("Закрыть", null)
+                    .show()
+            }
+
+            override fun onError(error: String) {
+                toast("Не удалось прочитать список карт: $error")
+            }
+        })
+    }
+
+    private fun showOfflineRegionActions(region: OfflineRegion) {
+        region.getStatus(object : OfflineRegion.OfflineRegionStatusCallback {
+            override fun onStatus(status: OfflineRegionStatus) {
+                val metadata = try { JSONObject(String(region.metadata, Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
+                val name = metadata.optString("name", "Область карты")
+                val state = if (status.downloadState == OfflineRegion.STATE_ACTIVE) "Загрузка активна" else if (status.isComplete) "Загрузка завершена" else "Приостановлена"
+                val percent = if (status.requiredResourceCount > 0L)
+                    (status.completedResourceCount * 100L / status.requiredResourceCount).coerceIn(0L, 100L) else 0L
+                val sizeMb = status.completedResourceSize / (1024L * 1024L)
+                val actions = if (status.downloadState == OfflineRegion.STATE_ACTIVE)
+                    arrayOf("Приостановить", "Удалить", "Закрыть")
+                else arrayOf(if (status.isComplete) "Проверить карту" else "Продолжить загрузку", "Удалить", "Закрыть")
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(name)
+                    .setMessage("$state · $percent%\nЗагружено плиток: ${status.completedTileCount}\nРазмер: $sizeMb МБ")
+                    .setItems(actions) { _, which ->
+                        when (which) {
+                            0 -> {
+                                if (status.downloadState == OfflineRegion.STATE_ACTIVE) {
+                                    region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                    toast("Загрузка приостановлена")
+                                } else if (!status.isComplete) {
+                                    region.setObserver(object : OfflineRegion.OfflineRegionObserver {
+                                        override fun onStatusChanged(next: OfflineRegionStatus) {
+                                            val mb = next.completedResourceSize / (1024L * 1024L)
+                                            if (next.completedResourceSize > 50L * 1024L * 1024L) {
+                                                region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                                toast("Загрузка остановлена на лимите 50 МБ")
+                                            } else if (next.isComplete) {
+                                                region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                                toast("Офлайн-карта готова · $mb МБ")
+                                            } else {
+                                                statusText.text = "Офлайн-карта · ${next.completedTileCount} плиток · $mb МБ"
+                                            }
+                                        }
+                                        override fun onError(error: org.maplibre.android.offline.OfflineRegionError) {
+                                            toast("Ошибка загрузки: ${error.message}")
+                                        }
+                                        override fun mapboxTileCountLimitExceeded(limit: Long) {
+                                            region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                            toast("Достигнут лимит плиток: $limit")
+                                        }
+                                    })
+                                    region.setDownloadState(OfflineRegion.STATE_ACTIVE)
+                                    toast("Загрузка продолжена")
+                                } else {
+                                    toast("Карта сохранена и будет доступна без сети в пределах загруженной области")
+                                }
+                            }
+                            1 -> AlertDialog.Builder(this@MainActivity)
+                                .setTitle("Удалить офлайн-карту?")
+                                .setMessage("Сохранённые данные этой области будут удалены с телефона.")
+                                .setPositiveButton("Удалить") { _, _ ->
+                                    region.delete(object : OfflineRegion.OfflineRegionDeleteCallback {
+                                        override fun onDelete() { toast("Офлайн-карта удалена") }
+                                        override fun onError(error: String) { toast("Не удалось удалить карту: $error") }
+                                    })
+                                }
+                                .setNegativeButton("Отмена", null)
+                                .show()
+                        }
+                    }
+                    .setNegativeButton("Назад", null)
+                    .show()
+            }
+
+            override fun onError(error: String) {
+                toast("Не удалось проверить карту: $error")
+            }
+        })
     }
 
     private fun showMapModeDialog() {
