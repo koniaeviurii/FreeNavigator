@@ -775,19 +775,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOfflineRegionList() {
         OfflineManager.getInstance(this).listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
-            override fun onList(offlineRegions: Array<OfflineRegion>) {
-                if (offlineRegions.isEmpty()) {
+            override fun onList(offlineRegions: Array<OfflineRegion>?) {
+                val regions = offlineRegions ?: emptyArray()
+                if (regions.isEmpty()) {
                     infoDialog("Мои офлайн-карты", "Пока нет сохранённых областей. Чтобы скачать карту, сначала приблизьте нужный район на экране.")
                     return
                 }
-                val labels = offlineRegions.map { region ->
+                val labels = regions.map { region ->
                     val metadata = try { JSONObject(String(region.metadata, Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
                     val name = metadata.optString("name", "Область карты")
                     "$name · ID ${region.id}"
                 }.toTypedArray()
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Сохранённые области")
-                    .setItems(labels) { _, index -> showOfflineRegionActions(offlineRegions[index]) }
+                    .setItems(labels) { _, index -> showOfflineRegionActions(regions[index]) }
                     .setNegativeButton("Закрыть", null)
                     .show()
             }
@@ -800,7 +801,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOfflineRegionActions(region: OfflineRegion) {
         region.getStatus(object : OfflineRegion.OfflineRegionStatusCallback {
-            override fun onStatus(status: OfflineRegionStatus) {
+            override fun onStatus(status: OfflineRegionStatus?) {
+                if (status == null) {
+                    toast("Статус офлайн-карты недоступен")
+                    return
+                }
                 val metadata = try { JSONObject(String(region.metadata, Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
                 val name = metadata.optString("name", "Область карты")
                 val state = if (status.downloadState == OfflineRegion.STATE_ACTIVE) "Загрузка активна" else if (status.isComplete) "Загрузка завершена" else "Приостановлена"
@@ -867,8 +872,8 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
 
-            override fun onError(error: String) {
-                toast("Не удалось проверить карту: $error")
+            override fun onError(error: String?) {
+                toast("Не удалось проверить карту: ${error ?: "неизвестная ошибка"}")
             }
         })
     }
