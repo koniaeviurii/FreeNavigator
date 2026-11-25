@@ -34,6 +34,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private var previousStepDistances = doubleArrayOf()
     private var nextStep = 0
     private var arrived = false
+    private val announcedRadarIds = mutableSetOf<String>()
 
     override fun onCreate() {
         super.onCreate()
@@ -69,6 +70,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         previousStepDistances = DoubleArray(count) { Double.MAX_VALUE }
         nextStep = 0
         arrived = false
+        announcedRadarIds.clear()
         pendingSpeech.clear()
         startForeground(NOTIFICATION_ID, buildNotification("Ведение по маршруту активно"))
         try {
@@ -96,6 +98,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onLocationChanged(location: Location) {
         if (arrived || !destinationLat.isFinite()) return
+        checkRadarProximity(location)
         while (nextStep < instructions.size) {
             val index = nextStep
             val distance = distanceMeters(location.latitude, location.longitude, stepLatitudes[index], stepLongitudes[index])
@@ -135,6 +138,44 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             arrived = true
             removeLocationUpdates()
             speak("Вы прибыли к месту назначения", ARRIVAL_UTTERANCE_ID)
+        }
+    }
+
+    /** Radar warnings continue in the foreground service even when the map screen is closed. */
+    private fun checkRadarProximity(location: Location) {
+        val prefs = getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("radar_enabled", true)) return
+        val raw = prefs.getString("radar_cache", null) ?: return
+        try {
+            val cameras = org.json.JSONArray(raw)
+            var nearestId: String? = null
+            var nearestDistance = 800.0
+            var nearestLimit = ""
+            for (i in 0 until cameras.length()) {
+                val camera = cameras.optJSONObject(i) ?: continue
+                val id = camera.optString("id")
+                if (id.isBlank()) continue
+                val distance = distanceMeters(
+                    location.latitude, location.longitude,
+                    camera.optDouble("lat", Double.NaN), camera.optDouble("lon", Double.NaN)
+                )
+                if (id in announcedRadarIds) {
+                    if (distance > 2500.0) announcedRadarIds.remove(id)
+                    continue
+                }
+                if (distance < nearestDistance) {
+                    nearestDistance = distance
+                    nearestId = id
+                    nearestLimit = camera.optString("maxspeed")
+                }
+            }
+            if (nearestId != null) {
+                val limit = nearestLimit.takeIf { it.isNotBlank() }?.let { " Ограничение $it." }.orEmpty()
+                speak("Впереди камера контроля скорости.$limit")
+                announcedRadarIds.add(nearestId)
+            }
+        } catch (_: Exception) {
+            // A malformed cache must not interrupt route guidance.
         }
     }
 
