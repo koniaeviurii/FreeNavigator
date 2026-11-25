@@ -65,6 +65,11 @@ import org.maplibre.geojson.LineString
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.offline.OfflineManager
+import org.maplibre.android.offline.OfflineRegion
+import org.maplibre.android.offline.OfflineRegionError
+import org.maplibre.android.offline.OfflineRegionStatus
+import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
@@ -116,6 +121,11 @@ class MainActivity : AppCompatActivity() {
     private val announcedRadarIds = mutableSetOf<String>()
     private var lastNavigationLocation: Location? = null
     private var pendingNavigation: RouteData? = null
+    private var offlineDownloadDialog: AlertDialog? = null
+    private var offlineDownloadProgress: ProgressBar? = null
+    private var offlineDownloadText: TextView? = null
+    private var activeOfflineRegion: OfflineRegion? = null
+    private var offlineDownloadPaused = false
     private var rerouteInProgress = false
     private var offRouteFixes = 0
     private var lastRerouteAt = 0L
@@ -390,7 +400,7 @@ class MainActivity : AppCompatActivity() {
         drawerDivider(panel)
         drawerItem(panel, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
         drawerItem(panel, "⇩", "Загрузка офлайн-карт", "Сохранение областей на телефон") {
-            infoDialog("Офлайн-карты", "Загрузка и хранение карт появятся в следующем этапе разработки.")
+            showOfflineMapsMenu()
         }
         drawerItem(panel, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(panel)
@@ -511,6 +521,205 @@ class MainActivity : AppCompatActivity() {
         searchPanel.visibility = View.GONE
         val keyboard = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         keyboard.hideSoftInputFromWindow(searchInput.windowToken, 0)
+    }
+
+    private fun offlineManager(): OfflineManager = OfflineManager.getInstance(applicationContext)
+
+    private fun showOfflineMapsMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("Офлайн-карты")
+            .setItems(arrayOf("Скачать видимую область карты", "Мои сохранённые области")) { _, which ->
+                if (which == 0) downloadVisibleOfflineArea() else showOfflineRegions()
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    private fun downloadVisibleOfflineArea() {
+        val currentMap = map
+        if (currentMap == null) {
+            toast("Карта ещё загружается")
+            return
+        }
+        val bounds = try { currentMap.projection.visibleRegion.latLngBounds } catch (_: Exception) { null }
+        if (bounds == null) {
+            toast("Не удалось определить видимую область карты")
+            return
+        }
+        val zoom = currentMap.cameraPosition.zoom.coerceIn(6.0, 16.0)
+        val minZoom = 6.0
+        val maxZoom = maxOf(zoom, 15.0).coerceAtMost(16.0)
+        val definition = OfflineTilePyramidRegionDefinition(
+            if (darkTheme) DARK_STYLE else LIGHT_STYLE,
+            bounds,
+            minZoom,
+            maxZoom,
+            resources.displayMetrics.density
+        )
+        val regionName = "Область " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())
+        showOfflineDownloadDialog("Подготовка загрузки…")
+        try {
+            offlineManager().createOfflineRegion(
+                definition,
+                regionName.toByteArray(Charsets.UTF_8),
+                object : OfflineManager.CreateOfflineRegionCallback {
+                    override fun onCreate(offlineRegion: OfflineRegion) {
+                        activeOfflineRegion = offlineRegion
+                        offlineDownloadPaused = false
+                        offlineDownloadText?.text = "Загрузка: $regionName"
+                        offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
+                            override fun onStatusChanged(status: OfflineRegionStatus) {
+                                runOnUiThread {
+                                    val required = status.requiredResourceCount
+                                    val completed = status.completedResourceCount
+                                    val percent = if (required > 0L) ((completed * 100L) / required).toInt().coerceIn(0, 100) else 0
+                                    offlineDownloadProgress?.progress = percent
+                                    val sizeMb = status.completedResourceSize / (1024L * 1024L)
+                                    offlineDownloadText?.text = if (status.isComplete) {
+                                        "Карта сохранена полностью · $sizeMb МБ"
+                                    } else {
+                                        "Загружено $completed из $required ресурсов ($percent%) · $sizeMb МБ"
+                                    }
+                                    if (status.isComplete) {
+                                        offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                        offlineDownloadPaused = true
+                                        offlineDownloadDialog?.getButton(AlertDialog.BUTTON_NEUTRAL)?.text = "Готово"
+                                    }
+                                }
+                            }
+                            override fun onError(error: OfflineRegionError) {
+                                runOnUiThread {
+                                    offlineDownloadText?.text = "Ошибка загрузки: $error"
+                                }
+                            }
+                            override fun mapboxTileCountLimitExceeded(limit: Long) {
+                                runOnUiThread {
+                                    offlineDownloadText?.text = "Превышен лимит карт MapLibre: $limit тайлов"
+                                    offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                }
+                            }
+                        })
+                        offlineRegion.setDeliverInactiveMessages(true)
+                        offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+                    }
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            offlineDownloadText?.text = "Не удалось начать загрузку: $error"
+                        }
+                    }
+                }
+            )
+        } catch (error: Exception) {
+            offlineDownloadText?.text = "Ошибка: ${error.message ?: "неизвестная ошибка"}"
+        }
+    }
+
+    private fun showOfflineDownloadDialog(message: String) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        offlineDownloadText = TextView(this).apply { text = message; textSize = 14f }
+        offlineDownloadProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+        }
+        content.addView(offlineDownloadText)
+        content.addView(offlineDownloadProgress, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(14) })
+        offlineDownloadDialog = AlertDialog.Builder(this)
+            .setTitle("Офлайн-карта")
+            .setView(content)
+            .setPositiveButton("Отменить загрузку", null)
+            .setNeutralButton("Пауза", null)
+            .setNegativeButton("Свернуть", null)
+            .create()
+        offlineDownloadDialog?.setOnShowListener {
+            offlineDownloadDialog?.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+                val region = activeOfflineRegion ?: return@setOnClickListener
+                offlineDownloadPaused = !offlineDownloadPaused
+                region.setDownloadState(if (offlineDownloadPaused) OfflineRegion.STATE_INACTIVE else OfflineRegion.STATE_ACTIVE)
+                offlineDownloadDialog?.getButton(AlertDialog.BUTTON_NEUTRAL)?.text =
+                    if (offlineDownloadPaused) "Продолжить" else "Пауза"
+            }
+            offlineDownloadDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+                val region = activeOfflineRegion
+                if (region != null) {
+                    region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                    region.delete(object : OfflineRegion.OfflineRegionDeleteCallback {
+                        override fun onDelete() {
+                            runOnUiThread { toast("Загрузка отменена, область удалена") }
+                        }
+                        override fun onError(error: String) {
+                            runOnUiThread { toast("Не удалось удалить область: $error") }
+                        }
+                    })
+                }
+                activeOfflineRegion = null
+                offlineDownloadDialog?.dismiss()
+            }
+        }
+        offlineDownloadDialog?.show()
+    }
+
+    private fun showOfflineRegions() {
+        offlineManager().listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+            override fun onList(offlineRegions: Array<OfflineRegion>) {
+                if (offlineRegions.isEmpty()) {
+                    infoDialog("Офлайн-карты", "Сохранённых областей пока нет. Можно скачать видимую область карты.")
+                    return
+                }
+                val names = offlineRegions.mapIndexed { index, region ->
+                    val label = try { String(region.metadata, Charsets.UTF_8) } catch (_: Exception) { "" }
+                    if (label.isBlank()) "Область ${index + 1}" else label
+                }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Сохранённые области")
+                    .setItems(names) { _, index -> showOfflineRegionActions(offlineRegions[index], names[index]) }
+                    .setNegativeButton("Закрыть", null)
+                    .show()
+            }
+            override fun onError(error: String) {
+                toast("Не удалось получить список офлайн-карт: $error")
+            }
+        })
+    }
+
+    private fun showOfflineRegionActions(region: OfflineRegion, name: String) {
+        region.getStatus(object : OfflineRegion.OfflineRegionStatusCallback {
+            override fun onStatus(status: OfflineRegionStatus?) {
+                if (status == null) {
+                    toast("Не удалось прочитать состояние области")
+                    return
+                }
+                val active = status.downloadState == OfflineRegion.STATE_ACTIVE
+                val state = when {
+                    status.isComplete -> "Загрузка завершена"
+                    active -> "Загрузка продолжается"
+                    status.completedResourceCount > 0L -> "Загрузка приостановлена"
+                    else -> "Ожидает загрузки"
+                }
+                val sizeMb = status.completedResourceSize / (1024L * 1024L)
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(name)
+                    .setMessage("$state\nЗагружено ресурсов: ${status.completedResourceCount}\nРазмер: $sizeMb МБ")
+                    .setPositiveButton(if (active) "Пауза" else "Продолжить") { _, _ ->
+                        region.setDownloadState(if (active) OfflineRegion.STATE_INACTIVE else OfflineRegion.STATE_ACTIVE)
+                        showOfflineRegions()
+                    }
+                    .setNegativeButton("Удалить") { _, _ ->
+                        region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                        region.delete(object : OfflineRegion.OfflineRegionDeleteCallback {
+                            override fun onDelete() { toast("Офлайн-область удалена") }
+                            override fun onError(error: String) { toast("Ошибка удаления: $error") }
+                        })
+                    }
+                    .setNeutralButton("Закрыть", null)
+                    .show()
+            }
+            override fun onError(error: String?) {
+                toast("Ошибка чтения офлайн-области: ${error ?: "неизвестная ошибка"}")
+            }
+        })
     }
 
     private fun showMapModeDialog() {
