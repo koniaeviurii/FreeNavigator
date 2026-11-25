@@ -55,6 +55,8 @@ import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.PropertyFactory.textField
 import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
 import org.maplibre.android.style.layers.PropertyFactory.textRotate
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
@@ -433,7 +435,7 @@ class MainActivity : AppCompatActivity() {
         val spacer = View(this)
         panel.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.3.1"
+            text = "FreeNavigator · версия 0.4.1"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(14), dp(16), dp(8))
@@ -580,6 +582,15 @@ class MainActivity : AppCompatActivity() {
             circleStrokeColor("#FFFFFF"),
             circleStrokeWidth(2.5f)
         ))
+        style.addLayer(SymbolLayer(RADAR_LABEL_LAYER_ID, RADAR_SOURCE_ID).withProperties(
+            textField("{radar_label}"),
+            textSize(10f),
+            textColor("#FFFFFF"),
+            textHaloColor("#8B0000"),
+            textHaloWidth(1.5f),
+            textAllowOverlap(false),
+            textIgnorePlacement(false)
+        ))
         radarSource = source
     }
 
@@ -602,8 +613,16 @@ class MainActivity : AppCompatActivity() {
                 if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) continue
                 val feature = Feature.fromGeometry(Point.fromLngLat(lon, lat))
                 feature.addStringProperty("id", camera.optString("id"))
-                val speed = camera.optString("maxspeed")
-                if (speed.isNotBlank()) feature.addStringProperty("maxspeed", speed)
+                val speed = camera.optString("maxspeed").trim()
+                if (speed.isNotBlank()) {
+                    feature.addStringProperty("maxspeed", speed)
+                    val label = when {
+                        speed.matches(Regex("\\d+(?:\\.\\d+)?")) -> "$speed км/ч"
+                        speed.matches(Regex("\\d+(?:\\.\\d+)? ?(?:km/h|mph)", RegexOption.IGNORE_CASE)) -> speed
+                        else -> ""
+                    }
+                    if (label.isNotBlank()) feature.addStringProperty("radar_label", label)
+                }
                 features.add(feature)
             }
         } catch (_: Exception) {
@@ -1391,6 +1410,7 @@ class MainActivity : AppCompatActivity() {
         private const val LOCATION_SOURCE_ID = "free-navigator-location-source"
         private const val RADAR_SOURCE_ID = "free-navigator-radar-source"
         private const val RADAR_LAYER_ID = "free-navigator-radar-layer"
+        private const val RADAR_LABEL_LAYER_ID = "free-navigator-radar-label-layer"
         private const val LOCATION_HALO_LAYER_ID = "free-navigator-location-halo"
         private const val LOCATION_DOT_LAYER_ID = "free-navigator-location-dot"
         private const val SEARCH_RESULT_SOURCE_ID = "free-navigator-search-result-source"
