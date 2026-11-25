@@ -18,6 +18,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** Keeps GPS guidance and Russian voice prompts alive while the map screen is backgrounded. */
 class NavigationForegroundService : Service(), LocationListener, TextToSpeech.OnInitListener {
@@ -124,12 +125,16 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             val thresholds = intArrayOf(800, 300, 60)
             val previous = previousStepDistances[index]
             if (previous == Double.MAX_VALUE) {
-                // Do not announce warnings that were already passed before the first usable GPS fix.
-                if (distance <= 800.0) announced[index][0] = true
-                if (distance <= 300.0) announced[index][1] = true
+                // The first usable GPS fix may already be inside a warning band.
+                // Give one truthful distance prompt instead of silently skipping it.
                 if (distance <= 60.0) {
                     announced[index].fill(true)
                     speak("Сейчас. ${instructions[index]}")
+                } else if (distance <= 800.0) {
+                    announced[index][0] = true
+                    if (distance <= 300.0) announced[index][1] = true
+                    val firstPromptMeters = ((distance / 50.0).roundToInt() * 50).coerceAtLeast(50)
+                    speak("Через $firstPromptMeters метров. ${instructions[index]}")
                 }
             } else {
                 val crossed = thresholds.indices.filter {
