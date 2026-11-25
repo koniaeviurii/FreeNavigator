@@ -90,7 +90,6 @@ class OfflineRoadGraph(context: Context) : SQLiteOpenHelper(context, DB_NAME, nu
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete("edges", null, null)
             parsed.forEach { edge ->
                 val values = ContentValues().apply {
                     put("from_id", edge.from); put("to_id", edge.to)
@@ -219,7 +218,7 @@ class OfflineRoadGraph(context: Context) : SQLiteOpenHelper(context, DB_NAME, nu
 
     private fun heuristic(a: Pair<Double, Double>, b: Pair<Double, Double>, fastest: Boolean): Double {
         val distance = distanceMeters(a.first, a.second, b.first, b.second)
-        return if (fastest) distance / 35.0 else distance
+        return if (fastest) distance / 45.0 else distance
     }
 
     private fun speedFor(highway: String, maxspeed: String): Double {
