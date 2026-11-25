@@ -91,6 +91,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedSearchPoint: Point? = null
     private var routeLine: LineString? = null
     private var navigationActive = false
+    private var foregroundGuidanceStarted = false
     private var navigationLocationListener: LocationListener? = null
     private var navigationSource: GeoJsonSource? = null
     private var navigationPoints: List<Point> = emptyList()
@@ -858,6 +859,7 @@ class MainActivity : AppCompatActivity() {
         navigationStartedAt = System.currentTimeMillis()
         arrivalAnnounced = false
         lastNavigationLocation = null
+        startForegroundGuidance(route)
         routeProgress?.progress = 0
         val startLabel = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(navigationStartedAt))
         routeStartTime?.text = "Начало $startLabel"
@@ -898,6 +900,26 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             stopNavigation()
             toast("Не удалось запустить GPS-ведение: ${e.message ?: "ошибка GPS"}")
+        }
+    }
+
+
+    private fun startForegroundGuidance(route: RouteData) {
+        val destination = route.points.lastOrNull() ?: return
+        val intent = Intent(this, NavigationForegroundService::class.java).apply {
+            action = NavigationForegroundService.ACTION_START
+            putExtra(NavigationForegroundService.EXTRA_DEST_LAT, destination.latitude())
+            putExtra(NavigationForegroundService.EXTRA_DEST_LON, destination.longitude())
+            putExtra(NavigationForegroundService.EXTRA_STEP_LATS, route.steps.map { it.point.latitude() }.toDoubleArray())
+            putExtra(NavigationForegroundService.EXTRA_STEP_LONS, route.steps.map { it.point.longitude() }.toDoubleArray())
+            putExtra(NavigationForegroundService.EXTRA_INSTRUCTIONS, route.steps.map { it.instruction }.toTypedArray())
+        }
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            foregroundGuidanceStarted = true
+        } catch (e: Exception) {
+            foregroundGuidanceStarted = false
+            toast("Не удалось включить фоновое ведение: ${e.message ?: "ошибка службы"}")
         }
     }
 
@@ -972,6 +994,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun announceNextManeuver(location: Location) {
+        if (foregroundGuidanceStarted) return
         if (!speechReady || nextVoiceStepIndex >= navigationSteps.size) return
         val step = navigationSteps[nextVoiceStepIndex]
         val distance = distanceBetween(location.latitude, location.longitude, step.point.latitude(), step.point.longitude())
@@ -991,6 +1014,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopNavigation() {
         navigationActive = false
+        foregroundGuidanceStarted = false
+        try { startService(Intent(this, NavigationForegroundService::class.java).setAction(NavigationForegroundService.ACTION_STOP)) } catch (_: Exception) { }
         pendingNavigation = null
         try {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
@@ -1239,7 +1264,16 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() { stopRadarMonitoring(); mapView.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) { mapView.onSaveInstanceState(outState); super.onSaveInstanceState(outState) }
-    override fun onDestroy() { stopNavigation(); speech?.stop(); speech?.shutdown(); screenScope.cancel(); mapView.onDestroy(); super.onDestroy() }
+    override fun onDestroy() {
+        if (navigationActive) {
+            try {
+                val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+                navigationLocationListener?.let { manager.removeUpdates(it) }
+            } catch (_: Exception) { }
+            navigationLocationListener = null
+        } else stopNavigation()
+        speech?.stop(); speech?.shutdown(); screenScope.cancel(); mapView.onDestroy(); super.onDestroy()
+    }
 
     private data class PlaceResult(val label: String, val lat: Double, val lon: Double, val shortLabel: String = label)
     private data class RouteStep(val point: Point, val instruction: String, val distanceMeters: Double, var announced: Boolean = false)
