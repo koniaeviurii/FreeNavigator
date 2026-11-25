@@ -161,6 +161,17 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 val camera = cameras.optJSONObject(i) ?: continue
                 val id = camera.optString("id")
                 if (id.isBlank()) continue
+                // OSM camera direction is a compass bearing in degrees. When the
+                // GPS fix has a reliable course, ignore cameras aimed clearly away
+                // from the vehicle's travel direction. Unknown/text directions remain
+                // eligible rather than silently suppressing a potentially useful alert.
+                val direction = sequenceOf("camera:direction", "direction")
+                    .mapNotNull { key -> camera.optString(key).toDoubleOrNull() }
+                    .firstOrNull { it.isFinite() && it in 0.0..360.0 }
+                if (direction != null && location.hasBearing() && location.speed >= 3.0f) {
+                    val difference = kotlin.math.abs(((location.bearing - direction + 540f) % 360f) - 180f)
+                    if (difference > 75f) continue
+                }
                 val distance = distanceMeters(
                     location.latitude, location.longitude,
                     camera.optDouble("lat", Double.NaN), camera.optDouble("lon", Double.NaN)
