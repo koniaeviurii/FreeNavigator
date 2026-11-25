@@ -194,7 +194,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     .mapNotNull { key -> camera.optString(key).toDoubleOrNull() }
                     .firstOrNull { it.isFinite() && it in 0.0..360.0 }
                 if (direction != null && location.hasBearing() && location.speed >= 3.0f) {
-                    val difference = kotlin.math.abs(((location.bearing - direction + 540f) % 360f) - 180f)
+                    // OSM camera:direction describes where the camera faces;
+                    // approaching traffic normally travels in the opposite heading.
+                    val approachHeading = (direction + 180.0) % 360.0
+                    val difference = kotlin.math.abs(((location.bearing - approachHeading + 540f) % 360f) - 180f)
                     if (difference > 75f) continue
                 }
                 val distance = distanceMeters(
