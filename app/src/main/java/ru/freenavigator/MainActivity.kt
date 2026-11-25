@@ -539,13 +539,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMapModeDialog() {
+        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+        val mode = prefs.getString("search_mode", "auto") ?: "auto"
+        val selected = when (mode) { "online" -> 0; "offline" -> 2; else -> 1 }
         AlertDialog.Builder(this)
-            .setTitle("Режим карт")
-            .setSingleChoiceItems(arrayOf("Онлайн-карта", "Офлайн-карты (в разработке)"), 0) { dialog, which ->
-                if (which == 0) statusText.text = "Карта · онлайн"
-                else infoDialog("Офлайн-карты", "Загрузка офлайн-карт будет реализована следующим этапом.")
+            .setTitle("Режим поиска")
+            .setSingleChoiceItems(arrayOf("Онлайн", "Автоматически (онлайн, затем локально)", "Офлайн — только загруженная база"), selected) { dialog, which ->
+                val chosen = when (which) { 0 -> "online"; 2 -> "offline"; else -> "auto" }
+                prefs.edit().putString("search_mode", chosen).apply()
+                statusText.text = when(chosen) {
+                    "offline" -> "Поиск · офлайн (локальная база)"
+                    "online" -> "Поиск · онлайн"
+                    else -> "Поиск · автоматический"
+                }
                 dialog.dismiss()
                 hideDrawer()
+                if (chosen == "offline" && OfflinePlaceIndex(this).count() == 0)
+                    infoDialog("Локальная база пустая", "Для офлайн-поиска сначала импортируйте файл GeoJSON через пункт «Импорт офлайн-поиска».")
             }
             .setNegativeButton("Закрыть", null)
             .show()
@@ -744,25 +754,30 @@ class MainActivity : AppCompatActivity() {
 
     /** Try Photon first, then use Nominatim if Photon is unreachable or returns an error. */
     private fun searchWithFallback(query: String): List<PlaceResult> {
-        // Online providers are preferred, but the local index remains usable without a network.
+        val mode = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+            .getString("search_mode", "auto") ?: "auto"
+        // Explicit offline mode never contacts remote search services.
+        if (mode == "offline") return localPlaceSearch(query)
         try {
             val photon = photonSearch(query)
             if (photon.isNotEmpty()) return photon
         } catch (_: Exception) { }
-
+        if (mode == "online") return emptyList()
         try {
             val nominatim = nominatimSearch(query)
             if (nominatim.isNotEmpty()) return nominatim
         } catch (_: Exception) { }
+        return localPlaceSearch(query)
+    }
 
-        return OfflinePlaceIndex(this).search(query).map { place ->
+    private fun localPlaceSearch(query: String): List<PlaceResult> =
+        OfflinePlaceIndex(this).search(query).map { place ->
             val category = place.category.takeIf { it.isNotBlank() }
             val city = place.city.takeIf { it.isNotBlank() }
             val short = listOfNotNull(place.name, category, city).distinct().joinToString(" · ")
             val label = listOfNotNull(place.name, category, city).distinct().joinToString(", ")
             PlaceResult(label, place.latitude, place.longitude, short)
         }
-    }
 
     private fun photonSearch(query: String): List<PlaceResult> {
         val encoded = URLEncoder.encode(query, "UTF-8")
