@@ -80,6 +80,7 @@ import kotlin.math.atan
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.sinh
+import kotlin.math.roundToInt
 import kotlin.math.tan
 import java.net.HttpURLConnection
 import java.net.URLEncoder
@@ -518,7 +519,7 @@ class MainActivity : AppCompatActivity() {
             isFillViewport = true
             isVerticalScrollBarEnabled = true
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(content, ScrollView.LayoutParams(-1, -2))
+            addView(content, LinearLayout.LayoutParams(-1, -2))
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         return panel
