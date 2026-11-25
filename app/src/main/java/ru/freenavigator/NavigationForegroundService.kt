@@ -228,10 +228,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                         }
                         RadarEvent(id, distance, stage, warning)
                     }
-                    currentStage == 1 && distance <= 300.0 ->
-                        RadarEvent(id, distance, 2, "Через $roundedDistance метров камера контроля скорости.$limit")
                     currentStage == 1 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
+                    currentStage == 1 && distance <= 300.0 ->
+                        RadarEvent(id, distance, 2, "Через $roundedDistance метров камера контроля скорости.$limit")
                     currentStage == 2 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
                     else -> null
