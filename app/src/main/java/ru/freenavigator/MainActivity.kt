@@ -46,7 +46,6 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
@@ -54,7 +53,6 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
-import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
 import org.maplibre.android.style.layers.PropertyFactory.textField
 import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.PropertyFactory.textColor
@@ -64,8 +62,6 @@ import org.maplibre.android.style.layers.PropertyFactory.textRotate
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
 import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.android.style.sources.RasterSource
-import org.maplibre.android.style.sources.TileSet
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.LineString
@@ -107,8 +103,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var drawerPanel: LinearLayout
     private var searchExpanded = false
     private var radarEnabled = true
-    private var trafficEnabled = false
-    private var trafficAttribution: TextView? = null
     private var locationSource: GeoJsonSource? = null
     private var radarSource: GeoJsonSource? = null
     private var lastKnownPoint: Point? = null
@@ -129,6 +123,9 @@ class MainActivity : AppCompatActivity() {
     private var navigationInfo: TextView? = null
     private var maneuverInfo: TextView? = null
     private var maneuverIcon: TextView? = null
+    private var maneuverHud: LinearLayout? = null
+    private var maneuverHudIcon: TextView? = null
+    private var maneuverHudText: TextView? = null
     private var navigationPanel: LinearLayout? = null
     private var bottomControlsView: LinearLayout? = null
     private var routeProgress: ProgressBar? = null
@@ -189,8 +186,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
-        trafficEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
-            .getBoolean("traffic_enabled", false)
+        // Clear obsolete optional traffic settings; live traffic is postponed.
+        getSharedPreferences("free_navigator_settings", MODE_PRIVATE).edit()
+            .remove("tomtom_api_key").remove("traffic_enabled").apply()
         speech = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
                 val languageStatus = speech?.setLanguage(Locale("ru", "RU")) ?: TextToSpeech.LANG_NOT_SUPPORTED
@@ -317,19 +315,6 @@ class MainActivity : AppCompatActivity() {
             rightMargin = dp(10)
         })
 
-        val trafficCredit = TextView(this).apply {
-            text = "Traffic © TomTom"
-            textSize = 9f
-            setTextColor(0xFF536779.toInt())
-            setBackgroundColor(0xCCFFFFFF.toInt())
-            setPadding(dp(5), dp(3), dp(5), dp(3))
-            visibility = View.GONE
-        }
-        trafficAttribution = trafficCredit
-        root.addView(trafficCredit, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(10); bottomMargin = dp(8)
-        })
-
         // Keep status updates internally, but do not show the large bottom information panel.
         // This leaves the map unobstructed and removes the location/attribution captions.
         statusText = TextView(this).apply {
@@ -428,6 +413,40 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(10); rightMargin = dp(10); bottomMargin = dp(14)
         })
 
+        // Prominent next-maneuver banner, separate from the bottom route-progress panel.
+        val maneuverBanner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(14), dp(8))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xEE1769AA.toInt())
+                cornerRadius = dp(12).toFloat()
+            }
+            elevation = dp(8).toFloat()
+            visibility = View.GONE
+        }
+        val bannerIcon = TextView(this).apply {
+            text = "↑"; textSize = 30f; gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        val bannerText = TextView(this).apply {
+            text = "Определяем следующий манёвр…"
+            textSize = 15f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(dp(12), 0, 0, 0)
+            maxLines = 2
+        }
+        maneuverBanner.addView(bannerIcon, LinearLayout.LayoutParams(dp(44), dp(46)))
+        maneuverBanner.addView(bannerText, LinearLayout.LayoutParams(0, -2, 1f))
+        maneuverHud = maneuverBanner
+        maneuverHudIcon = bannerIcon
+        maneuverHudText = bannerText
+        root.addView(maneuverBanner, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            leftMargin = dp(82); rightMargin = dp(70); topMargin = dp(66)
+        })
+
         // Drawer is added last so it opens above the map controls.
         drawerScrim = View(this).apply {
             setBackgroundColor(0x660B1E32)
@@ -492,22 +511,6 @@ class MainActivity : AppCompatActivity() {
         }
         drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(content)
-        drawerItem(content, "🚦", "Пробки", if (trafficEnabled) "Показ потока движения включён" else "Показ потока движения выключен") {
-            val key = getSharedPreferences("free_navigator_settings", MODE_PRIVATE).getString("tomtom_api_key", "").orEmpty()
-            if (key.isBlank()) {
-                infoDialog("Для пробок нужен ключ TomTom", "Сначала откройте пункт «Ключ TomTom» ниже и сохраните API-ключ. Его можно получить в личном кабинете TomTom Developer.")
-            } else {
-                trafficEnabled = !trafficEnabled
-                getSharedPreferences("free_navigator_settings", MODE_PRIVATE).edit().putBoolean("traffic_enabled", trafficEnabled).apply()
-                hideDrawer()
-                loadMapStyle()
-                toast(if (trafficEnabled) "Пробки TomTom включены" else "Пробки TomTom выключены")
-            }
-        }
-        drawerItem(content, "🔑", "Ключ TomTom", "Подключение реальных данных о пробках") {
-            hideDrawer()
-            showTomTomKeyDialog()
-        }
         drawerItem(content, "⌕", "Поиск", "Найти адрес или место") {
             hideDrawer()
             toggleSearch()
@@ -543,22 +546,23 @@ class MainActivity : AppCompatActivity() {
         drawerItem(content, "⚙", "Настройки", "Параметры навигатора") {
             infoDialog("Настройки", "Дополнительные настройки добавим по мере подключения функций.")
         }
-        val spacer = View(this)
-        content.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-        val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.7"
-            textSize = 11f
-            setTextColor(0xFF91A0B1.toInt())
-            setPadding(dp(22), dp(14), dp(16), dp(8))
-        }
-        content.addView(version)
+        // Keep the version footer fixed; only the menu items participate in scrolling.
         val scrollView = ScrollView(this).apply {
-            isFillViewport = true
+            isFillViewport = false
             isVerticalScrollBarEnabled = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(content, LinearLayout.LayoutParams(-1, -2))
+            overScrollMode = View.OVER_SCROLL_ALWAYS
+            isSmoothScrollingEnabled = true
+            addView(content, ScrollView.LayoutParams(-1, -2))
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
+        val version = TextView(this).apply {
+            text = "FreeNavigator · версия 0.5.8"
+            textSize = 11f
+            setTextColor(0xFF91A0B1.toInt())
+            setPadding(dp(22), dp(12), dp(16), dp(12))
+            setBackgroundColor(0xFFF7F9FC.toInt())
+        }
+        panel.addView(version, LinearLayout.LayoutParams(-1, -2))
         return panel
     }
 
@@ -1022,73 +1026,11 @@ class MainActivity : AppCompatActivity() {
         map?.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
             addLocationMarker(style)
             addRadarMarkers(style)
-            addTrafficOverlay(style)
             addSearchResultMarker(style)
             addRouteLine(style)
             if (navigationActive) lastNavigationLocation?.let { addNavigationMarker(style, it) }
         }
         statusText.text = if (darkTheme) "Тёмная карта · онлайн" else "Карта · онлайн"
-    }
-
-    private fun addTrafficOverlay(style: Style) {
-        val key = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
-            .getString("tomtom_api_key", "").orEmpty()
-        if (!trafficEnabled || key.isBlank()) {
-            trafficAttribution?.visibility = View.GONE
-            return
-        }
-        val tiles = TileSet(
-            "tomtom-traffic",
-            "https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=$key&tileSize=256"
-        ).apply {
-            attribution = "Traffic data © TomTom"
-            minZoom = 5f
-            maxZoom = 22f
-        }
-        style.addSource(RasterSource(TRAFFIC_SOURCE_ID, tiles, 256))
-        val layer = RasterLayer(TRAFFIC_LAYER_ID, TRAFFIC_SOURCE_ID).withProperties(
-            rasterOpacity(0.78f)
-        )
-        val firstSymbolLayer = style.layers.firstOrNull { it is SymbolLayer }?.id
-        if (firstSymbolLayer != null) style.addLayerBelow(layer, firstSymbolLayer) else style.addLayer(layer)
-        trafficAttribution?.visibility = View.VISIBLE
-    }
-
-    private fun showTomTomKeyDialog() {
-        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
-        val input = EditText(this).apply {
-            hint = "Вставьте API-ключ TomTom"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setText(prefs.getString("tomtom_api_key", "").orEmpty())
-            setSelection(text.length)
-        }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(8), dp(22), 0)
-            addView(input, LinearLayout.LayoutParams(-1, dp(52)))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Ключ TomTom")
-            .setMessage("Ключ хранится только в настройках этого телефона. Для отображения пробок используется слой TomTom Traffic Flow.")
-            .setView(container)
-            .setPositiveButton("Сохранить") { _, _ ->
-                val key = input.text.toString().trim()
-                prefs.edit().putString("tomtom_api_key", key).apply()
-                if (key.isNotBlank()) {
-                    trafficEnabled = true
-                    prefs.edit().putBoolean("traffic_enabled", true).apply()
-                    loadMapStyle()
-                    toast("Ключ сохранён. Загружаем слой пробок TomTom.")
-                } else {
-                    trafficEnabled = false
-                    prefs.edit().putBoolean("traffic_enabled", false).apply()
-                    loadMapStyle()
-                    toast("Ключ удалён")
-                }
-                rebuildDrawer()
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
     }
 
     private fun rebuildDrawer() {
@@ -1492,6 +1434,9 @@ class MainActivity : AppCompatActivity() {
         routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", distanceMeters / 1000.0)} км"
         speak("Маршрут начат")
         navigationPanel?.visibility = View.VISIBLE
+        maneuverHud?.visibility = View.VISIBLE
+        maneuverHudIcon?.text = "↑"
+        maneuverHudText?.text = "Определяем следующий манёвр…"
         bottomControlsView?.visibility = View.GONE
         navigationInfo?.text = "Получаем координаты GPS…"
         try {
@@ -1592,6 +1537,8 @@ class MainActivity : AppCompatActivity() {
         if (step == null) {
             maneuverIcon?.text = "✓"
             maneuverInfo?.text = "Маршрут завершён"
+            maneuverHudIcon?.text = "✓"
+            maneuverHudText?.text = "Маршрут завершён"
             return
         }
         val distance = distanceBetween(
@@ -1614,11 +1561,14 @@ class MainActivity : AppCompatActivity() {
             "съезд" in lower -> "↗"
             else -> "↑"
         }
-        maneuverInfo?.text = if (distance <= 35.0) {
+        val maneuverText = if (distance <= 35.0) {
             "Сейчас · ${step.instruction}"
         } else {
             "Через $rounded м · ${step.instruction}"
         }
+        maneuverInfo?.text = maneuverText
+        maneuverHudIcon?.text = maneuverIcon?.text ?: "↑"
+        maneuverHudText?.text = maneuverText
     }
 
     /** Rebuilds the route after several reliable GPS fixes show that the driver left it. */
@@ -1753,6 +1703,7 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
         navigationLocationListener = null
         navigationPanel?.visibility = View.GONE
+        maneuverHud?.visibility = View.GONE
         bottomControlsView?.visibility = View.VISIBLE
         map?.style?.let { style ->
             if (style.getLayer(NAV_LAYER_ID) != null) style.removeLayer(NAV_LAYER_ID)
@@ -2027,8 +1978,6 @@ class MainActivity : AppCompatActivity() {
         private const val DARK_STYLE = "https://tiles.openfreemap.org/styles/dark"
         private const val LOCATION_SOURCE_ID = "free-navigator-location-source"
         private const val RADAR_SOURCE_ID = "free-navigator-radar-source"
-        private const val TRAFFIC_SOURCE_ID = "free-navigator-traffic-source"
-        private const val TRAFFIC_LAYER_ID = "free-navigator-traffic-layer"
         private const val RADAR_LAYER_ID = "free-navigator-radar-layer"
         private const val RADAR_LABEL_LAYER_ID = "free-navigator-radar-label-layer"
         private const val LOCATION_HALO_LAYER_ID = "free-navigator-location-halo"
