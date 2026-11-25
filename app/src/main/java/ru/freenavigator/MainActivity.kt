@@ -46,6 +46,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
@@ -53,6 +54,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
 import org.maplibre.android.style.layers.PropertyFactory.textField
 import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.PropertyFactory.textColor
@@ -62,6 +64,8 @@ import org.maplibre.android.style.layers.PropertyFactory.textRotate
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.LineString
@@ -103,6 +107,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var drawerPanel: LinearLayout
     private var searchExpanded = false
     private var radarEnabled = true
+    private var trafficEnabled = false
+    private var trafficAttribution: TextView? = null
     private var locationSource: GeoJsonSource? = null
     private var radarSource: GeoJsonSource? = null
     private var lastKnownPoint: Point? = null
@@ -183,6 +189,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
+        trafficEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+            .getBoolean("traffic_enabled", false)
         speech = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
                 val languageStatus = speech?.setLanguage(Locale("ru", "RU")) ?: TextToSpeech.LANG_NOT_SUPPORTED
@@ -307,6 +315,19 @@ class MainActivity : AppCompatActivity() {
         rightButtons.addView(zoomOutButton, LinearLayout.LayoutParams(dp(52), dp(52)).apply { topMargin = dp(9) })
         root.addView(rightButtons, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL).apply {
             rightMargin = dp(10)
+        })
+
+        val trafficCredit = TextView(this).apply {
+            text = "Traffic © TomTom"
+            textSize = 9f
+            setTextColor(0xFF536779.toInt())
+            setBackgroundColor(0xCCFFFFFF.toInt())
+            setPadding(dp(5), dp(3), dp(5), dp(3))
+            visibility = View.GONE
+        }
+        trafficAttribution = trafficCredit
+        root.addView(trafficCredit, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
+            rightMargin = dp(10); bottomMargin = dp(8)
         })
 
         // Keep status updates internally, but do not show the large bottom information panel.
@@ -471,6 +492,22 @@ class MainActivity : AppCompatActivity() {
         }
         drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(content)
+        drawerItem(content, "🚦", "Пробки", if (trafficEnabled) "Показ потока движения включён" else "Показ потока движения выключен") {
+            val key = getSharedPreferences("free_navigator_settings", MODE_PRIVATE).getString("tomtom_api_key", "").orEmpty()
+            if (key.isBlank()) {
+                infoDialog("Для пробок нужен ключ TomTom", "Сначала откройте пункт «Ключ TomTom» ниже и сохраните API-ключ. Его можно получить в личном кабинете TomTom Developer.")
+            } else {
+                trafficEnabled = !trafficEnabled
+                getSharedPreferences("free_navigator_settings", MODE_PRIVATE).edit().putBoolean("traffic_enabled", trafficEnabled).apply()
+                hideDrawer()
+                loadMapStyle()
+                toast(if (trafficEnabled) "Пробки TomTom включены" else "Пробки TomTom выключены")
+            }
+        }
+        drawerItem(content, "🔑", "Ключ TomTom", "Подключение реальных данных о пробках") {
+            hideDrawer()
+            showTomTomKeyDialog()
+        }
         drawerItem(content, "⌕", "Поиск", "Найти адрес или место") {
             hideDrawer()
             toggleSearch()
@@ -985,11 +1022,83 @@ class MainActivity : AppCompatActivity() {
         map?.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
             addLocationMarker(style)
             addRadarMarkers(style)
+            addTrafficOverlay(style)
             addSearchResultMarker(style)
             addRouteLine(style)
             if (navigationActive) lastNavigationLocation?.let { addNavigationMarker(style, it) }
         }
         statusText.text = if (darkTheme) "Тёмная карта · онлайн" else "Карта · онлайн"
+    }
+
+    private fun addTrafficOverlay(style: Style) {
+        val key = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+            .getString("tomtom_api_key", "").orEmpty()
+        if (!trafficEnabled || key.isBlank()) {
+            trafficAttribution?.visibility = View.GONE
+            return
+        }
+        val tiles = TileSet(
+            "tomtom-traffic",
+            "https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=$key&tileSize=256"
+        ).apply {
+            attribution = "Traffic data © TomTom"
+            minZoom = 5f
+            maxZoom = 22f
+        }
+        style.addSource(RasterSource(TRAFFIC_SOURCE_ID, tiles, 256))
+        val layer = RasterLayer(TRAFFIC_LAYER_ID, TRAFFIC_SOURCE_ID).withProperties(
+            rasterOpacity(0.78f)
+        )
+        val firstSymbolLayer = style.layers.firstOrNull { it is SymbolLayer }?.id
+        if (firstSymbolLayer != null) style.addLayerBelow(layer, firstSymbolLayer) else style.addLayer(layer)
+        trafficAttribution?.visibility = View.VISIBLE
+    }
+
+    private fun showTomTomKeyDialog() {
+        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+        val input = EditText(this).apply {
+            hint = "Вставьте API-ключ TomTom"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(prefs.getString("tomtom_api_key", "").orEmpty())
+            setSelection(text.length)
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(8), dp(22), 0)
+            addView(input, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Ключ TomTom")
+            .setMessage("Ключ хранится только в настройках этого телефона. Для отображения пробок используется слой TomTom Traffic Flow.")
+            .setView(container)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val key = input.text.toString().trim()
+                prefs.edit().putString("tomtom_api_key", key).apply()
+                if (key.isNotBlank()) {
+                    trafficEnabled = true
+                    prefs.edit().putBoolean("traffic_enabled", true).apply()
+                    loadMapStyle()
+                    toast("Ключ сохранён. Загружаем слой пробок TomTom.")
+                } else {
+                    trafficEnabled = false
+                    prefs.edit().putBoolean("traffic_enabled", false).apply()
+                    loadMapStyle()
+                    toast("Ключ удалён")
+                }
+                rebuildDrawer()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun rebuildDrawer() {
+        val updated = buildDrawer()
+        drawerPanel.removeAllViews()
+        while (updated.childCount > 0) {
+            val child = updated.getChildAt(0)
+            updated.removeViewAt(0)
+            drawerPanel.addView(child)
+        }
     }
 
     /** Draws fixed speed cameras from the locally cached OSM radar database. */
@@ -1918,6 +2027,8 @@ class MainActivity : AppCompatActivity() {
         private const val DARK_STYLE = "https://tiles.openfreemap.org/styles/dark"
         private const val LOCATION_SOURCE_ID = "free-navigator-location-source"
         private const val RADAR_SOURCE_ID = "free-navigator-radar-source"
+        private const val TRAFFIC_SOURCE_ID = "free-navigator-traffic-source"
+        private const val TRAFFIC_LAYER_ID = "free-navigator-traffic-layer"
         private const val RADAR_LAYER_ID = "free-navigator-radar-layer"
         private const val RADAR_LABEL_LAYER_ID = "free-navigator-radar-label-layer"
         private const val LOCATION_HALO_LAYER_ID = "free-navigator-location-halo"
