@@ -34,7 +34,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private var previousStepDistances = doubleArrayOf()
     private var nextStep = 0
     private var arrived = false
-    private val announcedRadarIds = mutableSetOf<String>()
+    private val radarWarningStages = mutableMapOf<String, Int>()
 
     override fun onCreate() {
         super.onCreate()
@@ -140,16 +140,23 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         }
     }
 
-    /** Radar warnings continue in the foreground service even when the map screen is closed. */
+    /** Multi-stage radar warnings continue while navigation runs in the foreground. */
     private fun checkRadarProximity(location: Location) {
         val prefs = getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("radar_enabled", true)) return
+        if (!prefs.getBoolean("radar_enabled", true)) {
+            radarWarningStages.clear()
+            return
+        }
         val raw = prefs.getString("radar_cache", null) ?: return
         try {
             val cameras = org.json.JSONArray(raw)
-            var nearestId: String? = null
-            var nearestDistance = 800.0
-            var nearestLimit = ""
+            data class RadarEvent(
+                val id: String,
+                val distance: Double,
+                val stage: Int,
+                val message: String
+            )
+            val events = mutableListOf<RadarEvent>()
             for (i in 0 until cameras.length()) {
                 val camera = cameras.optJSONObject(i) ?: continue
                 val id = camera.optString("id")
@@ -158,20 +165,38 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     location.latitude, location.longitude,
                     camera.optDouble("lat", Double.NaN), camera.optDouble("lon", Double.NaN)
                 )
-                if (id in announcedRadarIds) {
-                    if (distance > 2500.0) announcedRadarIds.remove(id)
+                if (distance > 2500.0) {
+                    radarWarningStages.remove(id)
                     continue
                 }
-                if (distance < nearestDistance) {
-                    nearestDistance = distance
-                    nearestId = id
-                    nearestLimit = camera.optString("maxspeed")
+                val currentStage = radarWarningStages[id] ?: 0
+                val limit = camera.optString("maxspeed")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { " Ограничение скорости $it." }
+                    .orEmpty()
+                val event = when {
+                    currentStage == 0 && distance <= 60.0 ->
+                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
+                    currentStage == 0 && distance <= 300.0 ->
+                        RadarEvent(id, distance, 2, "Через 300 метров камера контроля скорости.$limit")
+                    currentStage == 0 && distance <= 800.0 ->
+                        RadarEvent(id, distance, 1, "Через 800 метров камера контроля скорости.$limit")
+                    currentStage == 1 && distance <= 60.0 ->
+                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
+                    currentStage == 1 && distance <= 300.0 ->
+                        RadarEvent(id, distance, 2, "Через 300 метров камера контроля скорости.$limit")
+                    currentStage == 2 && distance <= 60.0 ->
+                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
+                    else -> null
                 }
+                if (event != null) events.add(event)
             }
-            if (nearestId != null) {
-                val limit = nearestLimit.takeIf { it.isNotBlank() }?.let { " Ограничение $it." }.orEmpty()
-                speak("Впереди камера контроля скорости.$limit")
-                announcedRadarIds.add(nearestId)
+            // Announce only one camera per GPS update. If GPS jumps across several
+            // distance bands, use the nearest applicable phrase instead of a burst.
+            val selected = events.minByOrNull { it.distance }
+            if (selected != null) {
+                radarWarningStages[selected.id] = selected.stage
+                speak(selected.message)
             }
         } catch (_: Exception) {
             // A malformed cache must not interrupt route guidance.
