@@ -42,8 +42,11 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
+
+      - name: Build debug APK with Wrapper
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
 
       - name: Verify APK exists
         run: test -s app/build/outputs/apk/debug/app-debug.apk
@@ -51,7 +54,21 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FreeNavigator-build-check-debug-apk
+          name: FreeNavigator-0.4.0-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Package complete source with Gradle Wrapper
+        run: |
+          zip -r FreeNavigator-0.4.0-source.zip . \
+            -x ".git/*" ".gradle/*" "app/build/*" "build/*" \
+               "FreeNavigator-*.zip" "*.zip"
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: FreeNavigator-0.4.0-source
+          path: FreeNavigator-0.4.0-source.zip
           if-no-files-found: error
           retention-days: 14
