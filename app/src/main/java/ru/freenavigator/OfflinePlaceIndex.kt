@@ -99,21 +99,18 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
         val cleaned = query.trim().replace(Regex("\\s+"), " ")
         if (cleaned.length < 2) return emptyList()
         val tokens = cleaned.split(' ').filter { it.isNotBlank() }.take(5)
-        val clauses = tokens.map { "(name LIKE ? OR category LIKE ? OR city LIKE ?)" }
+        // Escape LIKE metacharacters so a literal '%' or '_' in the query is not a wildcard.
+        val clauses = tokens.map { "(name LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\' OR city LIKE ? ESCAPE '\\\\')" }
         val args = tokens.flatMap { token ->
-            val pattern = "%$token%"
+            val pattern = "%${escapeLike(token)}%"
             listOf(pattern, pattern, pattern)
-        }.toTypedArray()
+        }.toMutableList()
+        // Prefix matches are ranked first with a bound parameter (not SQL interpolation).
+        args.add(0, escapeLike(cleaned) + "%")
         val results = mutableListOf<Place>()
-        readableDatabase.query(
-            TABLE,
-            arrayOf("id", "name", "category", "city", "latitude", "longitude"),
-            clauses.joinToString(" AND "),
-            args,
-            null,
-            null,
-            "CASE WHEN name LIKE '${escapeLike(cleaned)}%' THEN 0 ELSE 1 END, name COLLATE NOCASE",
-            limit.coerceIn(1, 50).toString()
+        readableDatabase.rawQuery(
+            "SELECT id, name, category, city, latitude, longitude FROM $TABLE WHERE ${clauses.joinToString(" AND ")} ORDER BY CASE WHEN name LIKE ? ESCAPE '\\\\' THEN 0 ELSE 1 END, name COLLATE NOCASE LIMIT ?",
+            (args + limit.coerceIn(1, 50).toString()).toTypedArray()
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 results.add(
@@ -137,7 +134,7 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
         }
 
     private fun escapeLike(value: String): String =
-        value.replace("%", "\\%").replace("_", "\\_").replace("'", "''")
+        value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     companion object {
         private const val DB_NAME = "free_navigator_places.db"
