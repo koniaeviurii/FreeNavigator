@@ -46,8 +46,8 @@ class OfflineRoadGraph(context: Context) : SQLiteOpenHelper(context, DB_NAME, nu
         if (it.moveToFirst()) it.getInt(0) else 0
     }
 
-    /** Replaces the local graph only after a valid road network has been parsed. */
-    fun replaceFromOverpassJson(json: String): Int {
+    /** Merges a validated Overpass extract into the local graph, preserving previously downloaded areas. */
+    fun mergeFromOverpassJson(json: String): Int {
         val elements = JSONObject(json).optJSONArray("elements") ?: error("В ответе нет списка дорог")
         val parsed = ArrayList<Edge>()
         val allowed = setOf("motorway", "motorway_link", "trunk", "trunk_link", "primary",
@@ -218,7 +218,7 @@ class OfflineRoadGraph(context: Context) : SQLiteOpenHelper(context, DB_NAME, nu
 
     private fun heuristic(a: Pair<Double, Double>, b: Pair<Double, Double>, fastest: Boolean): Double {
         val distance = distanceMeters(a.first, a.second, b.first, b.second)
-        return if (fastest) distance / 45.0 else distance
+        return if (fastest) distance / 50.0 else distance
     }
 
     private fun speedFor(highway: String, maxspeed: String): Double {
