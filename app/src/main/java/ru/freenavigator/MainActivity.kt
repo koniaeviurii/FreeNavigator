@@ -596,14 +596,6 @@ class MainActivity : AppCompatActivity() {
             hideDrawer()
             showOfflineMapsDialog()
         }
-        drawerItem(content, "⌕", "Загрузить офлайн-поиск", "Сохранить адреса и места рядом с картой") {
-            hideDrawer()
-            downloadOfflinePlaces()
-        }
-        drawerItem(content, "⌁", "Загрузить дорожную сеть", "Подготовить маршруты без интернета рядом с картой") {
-            hideDrawer()
-            downloadOfflineRoads()
-        }
         drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(content)
         drawerItem(content, "⌕", "Поиск", "Найти адрес или место") {
@@ -916,14 +908,23 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun showOfflineMapsDialog() {
-        val options = arrayOf("Выбрать страну, регион или город", "Скачать текущую область карты", "Мои офлайн-карты", "Закрыть")
+        val options = arrayOf(
+            "Выбрать страну, регион или город",
+            "Скачать текущую область карты",
+            "Сохранить места для офлайн-поиска",
+            "Сохранить дороги для офлайн-маршрутов",
+            "Мои офлайн-карты",
+            "Закрыть"
+        )
         AlertDialog.Builder(this)
-            .setTitle("Офлайн-карты")
+            .setTitle("Офлайн-карты и данные")
             .setItems(options) { dialog, which ->
                 when (which) {
                     0 -> promptOfflineTerritorySearch()
                     1 -> confirmCurrentAreaDownload()
-                    2 -> showOfflineRegionList()
+                    2 -> downloadOfflinePlaces()
+                    3 -> downloadOfflineRoads()
+                    4 -> showOfflineRegionList()
                     else -> dialog.dismiss()
                 }
             }
