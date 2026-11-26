@@ -61,7 +61,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     removeLocationUpdates()
                     requestAvailableProviders()
                     try {
-                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
                             .filter { locationManager.isProviderEnabled(it) }
                             .mapNotNull { locationManager.getLastKnownLocation(it) }
                             .maxByOrNull { it.time }
@@ -121,7 +121,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             lastFixAt = System.currentTimeMillis()
             waitingForGps = false
             requestAvailableProviders()
-            locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::onLocationChanged)
+            providers
+                .mapNotNull { provider -> try { locationManager.getLastKnownLocation(provider) } catch (_: Exception) { null } }
+                .maxByOrNull { it.time }
+                ?.let(::onLocationChanged)
             watchdogHandler.removeCallbacks(gpsWatchdog)
             watchdogHandler.postDelayed(gpsWatchdog, 5000L)
         } catch (_: SecurityException) {
@@ -391,16 +394,21 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     override fun onBind(intent: Intent?): IBinder? = null
     @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
     private fun requestAvailableProviders() {
-        try {
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (locationManager.isProviderEnabled(provider) && provider !in requestedProviders) {
+        // GPS is the primary source; network and passive updates help bridge
+        // short satellite dropouts when other Android apps already receive fixes.
+        for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+            if (provider in requestedProviders) continue
+            try {
+                if (provider == LocationManager.PASSIVE_PROVIDER || locationManager.isProviderEnabled(provider)) {
                     locationManager.requestLocationUpdates(provider, 1000L, 2f, this)
                     requestedProviders.add(provider)
                 }
+            } catch (_: SecurityException) {
+                // Location permission may be revoked while navigation is active.
+            } catch (_: Exception) {
+                // One unavailable provider must not prevent the others from working.
             }
-        } catch (_: SecurityException) {
-            // Avoid repeated GPS-status voice messages.
-        } catch (_: Exception) { }
+        }
     }
 
     private fun updateNotification(message: String) {
@@ -416,7 +424,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onProviderDisabled(provider: String) {
         val anyEnabled = try {
-            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
                 .any { locationManager.isProviderEnabled(it) }
         } catch (_: Exception) { false }
         if (!anyEnabled && !waitingForGps) {

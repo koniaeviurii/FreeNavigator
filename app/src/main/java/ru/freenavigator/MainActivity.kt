@@ -1466,10 +1466,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             }
             navigationLocationListener = listener
             var requested = false
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (manager.isProviderEnabled(provider)) {
-                    manager.requestLocationUpdates(provider, 1000L, 2f, listener, mainLooper)
-                    requested = true
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+                try {
+                    if (provider == LocationManager.PASSIVE_PROVIDER || manager.isProviderEnabled(provider)) {
+                        manager.requestLocationUpdates(provider, 1000L, 2f, listener, mainLooper)
+                        requested = true
+                    }
+                } catch (_: Exception) {
+                    // Continue registering the remaining providers.
                 }
             }
             if (!requested) {
@@ -1754,7 +1758,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     private fun currentDeviceLocation(): Location? {
         return try {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
-            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
                 .mapNotNull { provider -> if (manager.isProviderEnabled(provider)) manager.getLastKnownLocation(provider) else null }
                 .maxByOrNull { it.time }
         } catch (_: SecurityException) { null }
@@ -1836,7 +1840,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     private fun centerOnMyLocation() {
         try {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
             val location: Location? = providers.mapNotNull { provider ->
                 if (manager.isProviderEnabled(provider)) manager.getLastKnownLocation(provider) else null
             }.maxByOrNull { it.time }
@@ -1944,10 +1948,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         try {
             var requested = false
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (manager.isProviderEnabled(provider)) {
-                    manager.requestLocationUpdates(provider, 1000L, 0f, listener, mainLooper)
-                    requested = true
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+                try {
+                    if (provider == LocationManager.PASSIVE_PROVIDER || manager.isProviderEnabled(provider)) {
+                        manager.requestLocationUpdates(provider, 1000L, 0f, listener, mainLooper)
+                        requested = true
+                    }
+                } catch (_: Exception) {
+                    // Try another provider if this one is unavailable.
                 }
             }
             if (!requested) {
@@ -2014,8 +2022,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 override fun onProviderDisabled(provider: String) {}
             }
             radarLocationListener = listener
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (manager.isProviderEnabled(provider)) manager.requestLocationUpdates(provider, 5000L, 20f, listener, mainLooper)
+            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+                try {
+                    if (provider == LocationManager.PASSIVE_PROVIDER || manager.isProviderEnabled(provider)) {
+                        manager.requestLocationUpdates(provider, 5000L, 20f, listener, mainLooper)
+                    }
+                } catch (_: Exception) {
+                    // Keep radar monitoring active with whichever providers are available.
+                }
             }
             currentDeviceLocation()?.let { refreshRadarMarkers(); checkRadarProximity(it); enqueueRadarRefresh(it.latitude, it.longitude, false) }
         } catch (_: Exception) { radarLocationListener = null }
