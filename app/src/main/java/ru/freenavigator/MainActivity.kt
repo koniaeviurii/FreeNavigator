@@ -1027,26 +1027,49 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             toast("Не удалось определить границы территории")
             return
         }
-        var maxZoom = 14
-        var estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
-        while (estimate > 15000L && maxZoom > 5) {
-            maxZoom--
-            estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
-        }
-        if (estimate <= 0L || estimate > 15000L) {
-            infoDialog("Территория слишком большая", "Даже при обзорном масштабе она превышает лимит одной загрузки. Выберите отдельную область или город.")
-            return
-        }
+        // Split a selected city/region into manageable offline map packages.
         val minZoom = 5
-        val estimatedMb = estimate * 12L / 1024L
+        val maxZoom = 14
+        val chunks = splitOfflineBounds(bounds, 0.35)
+        val estimates = chunks.map { estimateOfflineTileCount(it, minZoom, maxZoom) }
+        val totalTiles = estimates.sum()
         AlertDialog.Builder(this)
             .setTitle("Сохранить ${territory.label}?")
-            .setMessage("Будет загружена территория из России с масштабами $minZoom–$maxZoom.\n\nРасчётно: $estimate плиток, около $estimatedMb МБ. Для больших областей приложение автоматически уменьшает максимальное увеличение, чтобы уложиться в лимит одной загрузки.")
+            .setMessage("Территория будет разбита на ${chunks.size} участков.\\nОценка общего объёма: $totalTiles плиток.\\nЗагрузка частей позволит сохранить большую область, не превышая лимит одной загрузки.")
             .setPositiveButton("Скачать") { _, _ ->
-                startOfflineRegionDownload(bounds, territory.label, estimate, minZoom.toDouble(), maxZoom.toDouble())
+                var started = 0
+                chunks.forEachIndexed { index, chunk ->
+                    val count = estimates[index]
+                    if (count in 1..15000L) {
+                        startOfflineRegionDownload(chunk, "${territory.label} · часть ${index + 1}", count, minZoom.toDouble(), maxZoom.toDouble())
+                        started++
+                    }
+                }
+                toast("Запущено частей карты: $started из ${chunks.size}")
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun splitOfflineBounds(bounds: LatLngBounds, stepDegrees: Double): List<LatLngBounds> {
+        val chunks = mutableListOf<LatLngBounds>()
+        var south = bounds.latitudeSouth
+        while (south < bounds.latitudeNorth) {
+            val north = minOf(south + stepDegrees, bounds.latitudeNorth)
+            var west = bounds.longitudeWest
+            while (west < bounds.longitudeEast) {
+                val east = minOf(west + stepDegrees, bounds.longitudeEast)
+                try {
+                    chunks += LatLngBounds.Builder()
+                        .include(LatLng(south, west))
+                        .include(LatLng(north, east))
+                        .build()
+                } catch (_: Exception) { }
+                west = east
+            }
+            south = north
+        }
+        return chunks
     }
 
     private fun confirmCurrentAreaDownload() {
