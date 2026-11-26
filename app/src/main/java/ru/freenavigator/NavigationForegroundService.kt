@@ -121,7 +121,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             lastFixAt = System.currentTimeMillis()
             waitingForGps = false
             requestAvailableProviders()
-            providers
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
                 .mapNotNull { provider -> try { locationManager.getLastKnownLocation(provider) } catch (_: Exception) { null } }
                 .maxByOrNull { it.time }
                 ?.let(::onLocationChanged)
@@ -424,7 +424,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onProviderDisabled(provider: String) {
         val anyEnabled = try {
-            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
                 .any { locationManager.isProviderEnabled(it) }
         } catch (_: Exception) { false }
         if (!anyEnabled && !waitingForGps) {
