@@ -279,7 +279,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             val selected = events.minByOrNull { it.distance }
             if (selected != null) {
                 radarWarningStages[selected.id] = selected.stage
-                val distanceText = if (selected.distance <= 60.0) "Рядом"
+                val distanceText = if (selected.distance < 100.0)
+                    "Около ${selected.distance.roundToInt().coerceAtLeast(1)} м"
                     else "Через ${((selected.distance / 50.0).roundToInt() * 50).coerceAtLeast(50)} м"
                 val camera = (0 until cameras.length()).asSequence()
                     .mapNotNull { cameras.optJSONObject(it) }

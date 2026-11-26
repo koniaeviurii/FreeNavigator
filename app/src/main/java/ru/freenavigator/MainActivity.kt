@@ -2486,7 +2486,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             manager.createNotificationChannel(channel)
         }
         val distanceText = when {
-            distanceMeters < 100.0 -> "Рядом"
+            distanceMeters < 100.0 -> "Около ${distanceMeters.roundToInt().coerceAtLeast(1)} м"
             else -> "Через ${((distanceMeters / 50.0).roundToInt() * 50).coerceAtLeast(50)} м"
         }
         val directionText = if (rearDirection) " · контроль в спину" else ""
