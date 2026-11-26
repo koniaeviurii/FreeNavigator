@@ -737,7 +737,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             connectTimeout = 20000
             readTimeout = 60000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.5.6 (Android offline road graph)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android offline road graph)")
             setRequestProperty("Accept", "application/json")
         }
         try {
@@ -775,7 +775,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 .dispatcher(dispatcher)
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
-                        .header("User-Agent", "FreeNavigator/0.5.6 (Android offline map navigation)")
+                        .header("User-Agent", "FreeNavigator/0.6.0 (Android offline map navigation)")
                         .build()
                     chain.proceed(request)
                 }
@@ -887,11 +887,11 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         var maxZoom = 14
         var estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
-        while (estimate > 2500L && maxZoom > 5) {
+        while (estimate > 15000L && maxZoom > 5) {
             maxZoom--
             estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
         }
-        if (estimate <= 0L || estimate > 2500L) {
+        if (estimate <= 0L || estimate > 15000L) {
             infoDialog("Территория слишком большая", "Даже при обзорном масштабе она превышает лимит одной загрузки. Выберите отдельную область или город.")
             return
         }
@@ -914,7 +914,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             return
         }
         val tileEstimate = estimateOfflineTileCount(bounds, 8, 14)
-        if (tileEstimate <= 0L || tileEstimate > 2500L) {
+        if (tileEstimate <= 0L || tileEstimate > 15000L) {
             infoDialog(
                 "Область слишком большая",
                 "Сейчас расчётная загрузка — около $tileEstimate картографических плиток. Увеличьте масштаб карты до нужного города или района и повторите. Лимит одной загрузки — 3 000 плиток и 50 МБ."
@@ -971,16 +971,16 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 region.setObserver(object : OfflineRegion.OfflineRegionObserver {
                     override fun onStatusChanged(status: OfflineRegionStatus) {
                         val sizeMb = status.completedResourceSize / (1024L * 1024L)
-                        if (status.completedTileCount > 3000L) {
+                        if (status.completedTileCount > 15000L) {
                             region.setDownloadState(OfflineRegion.STATE_INACTIVE)
-                            statusText.text = "Офлайн-карта остановлена: более 3 000 плиток"
-                            toast("Одна загрузка ограничена 3 000 плитками. Уменьшите область и сохраните её частями.")
+                            statusText.text = "Офлайн-карта остановлена: более 15 000 плиток"
+                            toast("Одна загрузка ограничена 15 000 плитками. Уменьшите область и сохраните её частями.")
                             return
                         }
-                        if (status.completedResourceSize > 50L * 1024L * 1024L) {
+                        if (status.completedResourceSize > 200L * 1024L * 1024L) {
                             region.setDownloadState(OfflineRegion.STATE_INACTIVE)
-                            statusText.text = "Офлайн-карта остановлена: достигнут лимит 50 МБ"
-                            toast("Загрузка остановлена на лимите 50 МБ. Уменьшите область и загрузите её частями.")
+                            statusText.text = "Офлайн-карта остановлена: достигнут лимит 200 МБ"
+                            toast("Загрузка остановлена на лимите 200 МБ. Уменьшите область и загрузите её частями.")
                             return
                         }
                         if (status.isComplete) {
@@ -1438,7 +1438,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             connectTimeout = 12000
             readTimeout = 15000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "FreeNavigator/0.5.6 (Android navigation app)")
+            setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android navigation app)")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Accept-Language", "ru")
         }

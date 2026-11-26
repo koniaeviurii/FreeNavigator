@@ -47,7 +47,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                     readTimeout = 65000
                     requestMethod = "POST"
                     doOutput = true
-                    setRequestProperty("User-Agent", "FreeNavigator/0.5.9 (Android navigation app)")
+                    setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android navigation app)")
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 }
                 val payload = "data=" + URLEncoder.encode(query, "UTF-8")

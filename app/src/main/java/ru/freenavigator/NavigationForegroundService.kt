@@ -144,11 +144,14 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         if (System.currentTimeMillis() - location.time > 15000L) return
         val previous = previousAcceptedLocation
         if (previous != null) {
-            val deltaSeconds = ((location.time - previousAcceptedTime).coerceAtLeast(0L)) / 1000.0
-            if (deltaSeconds > 0.0) {
-                val jump = distanceMeters(previous.latitude, previous.longitude, location.latitude, location.longitude)
-                if (jump > deltaSeconds * 65.0 + 120.0) return
-            }
+            // Discard duplicate or older fixes delivered by parallel providers.
+            if (location.time <= previousAcceptedTime) return
+            val deltaSeconds = (location.time - previousAcceptedTime) / 1000.0
+            val jump = distanceMeters(previous.latitude, previous.longitude, location.latitude, location.longitude)
+            val previousAccuracy = if (previous.hasAccuracy()) previous.accuracy.coerceAtMost(35f) else 25f
+            val currentAccuracy = if (location.hasAccuracy()) location.accuracy.coerceAtMost(35f) else 25f
+            val plausibleMeters = (deltaSeconds * 55.0).coerceAtLeast(25.0) + previousAccuracy + currentAccuracy
+            if (jump > plausibleMeters) return
         }
         previousAcceptedLocation = Location(location)
         previousAcceptedTime = location.time
