@@ -51,7 +51,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
             prefs.edit()
                 .putString("radar_cache", national.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())
-                .putString("radar_source_date", "21.09.2026")
+                .putString("radar_source_date", "SpeedCams.world · обновлена")
                 .remove("radar_last_error")
                 .putString("radar_last_result", "Обновлена база России: ${national.length()} камер · OpenStreetMap")
                 .apply()

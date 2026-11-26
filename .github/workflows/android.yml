@@ -56,7 +56,8 @@ jobs:
           cat > app/src/main/assets/radar/ATTRIBUTION.txt <<'EOF'
           Camera coordinates: © OpenStreetMap contributors
           Source: https://speedcams.world/download/russia
-          Snapshot date: 21 September 2026
+          Downloaded during CI build (UTC): $(date -u +%F)
+          Dataset freshness depends on the upstream publisher; this is not a guarantee of camera completeness.
           Licence: Open Database Licence (ODbL) 1.0
           Reuse requires attribution and sharing adaptations under ODbL 1.0.
           This community-mapped dataset may be incomplete or out of date.
