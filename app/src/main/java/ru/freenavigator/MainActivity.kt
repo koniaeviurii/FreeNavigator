@@ -1,6 +1,9 @@
 package ru.freenavigator
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
@@ -24,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.view.setPadding
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -2033,7 +2037,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             val cameras = org.json.JSONArray(raw)
             var nearestId: String? = null
             var nearestDistance = 800.0
-            var nearestLimit = ""
+            var nearestBackward = false
             for (i in 0 until cameras.length()) {
                 val camera = cameras.optJSONObject(i) ?: continue
                 val id = camera.optString("id")
@@ -2053,12 +2057,11 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 if (distance < nearestDistance) {
                     nearestDistance = distance
                     nearestId = id
-                    nearestLimit = camera.optString("maxspeed")
+                    nearestBackward = camera.optString("direction_backward").isNotBlank()
                 }
             }
             if (nearestId != null) {
-                val limitSpeech = nearestLimit.takeIf { it.isNotBlank() }?.let { " Ограничение $it." }.orEmpty()
-                speak("Впереди камера контроля скорости.$limitSpeech")
+                showRadarNotification(nearestDistance, nearestBackward)
                 announcedRadarIds.add(nearestId)
             }
             // Allow a fresh warning after the vehicle has moved well away and returned.
@@ -2074,6 +2077,48 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             }
             announcedRadarIds.removeAll(removeIds.toSet())
         } catch (_: Exception) {}
+    }
+
+    private fun showRadarNotification(distanceMeters: Double, rearDirection: Boolean) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "radar_alerts"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            manager.getNotificationChannel(channelId) == null) {
+            val channel = NotificationChannel(
+                channelId,
+                "Предупреждения о камерах",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Звуковые предупреждения о приближении к камерам контроля скорости"
+                enableVibration(true)
+                setSound(
+                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                        .build()
+                )
+            }
+            manager.createNotificationChannel(channel)
+        }
+        val distanceText = when {
+            distanceMeters < 100.0 -> "Рядом"
+            else -> "Через ${((distanceMeters / 50.0).roundToInt() * 50).coerceAtLeast(50)} м"
+        }
+        val directionText = if (rearDirection) " · контроль в спину" else ""
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Камера контроля скорости")
+            .setContentText("$distanceText$directionText")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$distanceText$directionText"))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .build()
+        if (Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            manager.notify(2002, notification)
+        }
     }
 
     private fun speak(message: String) {
