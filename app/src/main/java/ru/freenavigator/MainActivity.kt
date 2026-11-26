@@ -485,6 +485,7 @@ class MainActivity : AppCompatActivity() {
         routeRemainingText = TextView(this).apply {
             text = "До конца маршрута: — км."
             textSize = 13f
+            gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(0xFF173B5E.toInt())
             setPadding(0, dp(5), 0, 0)
