@@ -204,7 +204,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 }
             }
             previousStepDistances[index] = distance
-            if (distance <= 25.0) nextStep++ else break
+            if (distance <= 60.0) nextStep++ else break
         }
 
         val remaining = distanceMeters(location.latitude, location.longitude, destinationLat, destinationLon)

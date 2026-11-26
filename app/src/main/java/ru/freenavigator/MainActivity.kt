@@ -1893,7 +1893,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             location.latitude, location.longitude,
             step.point.latitude(), step.point.longitude()
         )
-        if (foregroundGuidanceStarted && distance <= 35.0) {
+        if (foregroundGuidanceStarted && distance <= 60.0) {
             nextVoiceStepIndex++
             updateManeuverDisplay(location)
             return
@@ -2028,7 +2028,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             speak(distanceText + step.instruction)
             step.announced = true
         }
-        if (distance <= 35.0) nextVoiceStepIndex++
+        if (distance <= 60.0) nextVoiceStepIndex++
     }
 
     private fun distanceBetween(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
