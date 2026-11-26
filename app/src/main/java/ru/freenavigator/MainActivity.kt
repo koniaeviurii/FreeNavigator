@@ -908,8 +908,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                         Thread.sleep(1100)
                     }
                 }
-                statusText.text = "Офлайн-данные ${territoryName} загружены частично или полностью"
-                toast("Загрузка данных ${territoryName} завершена. Дорожных сегментов добавлено: $roadSegments; объектов поиска: $placeCount; участков с ошибками: $failedCells.")
+                val resultText = when {
+                    failedCells == 0 -> "Офлайн-данные ${territoryName} загружены"
+                    failedCells == cells.size -> "Не удалось загрузить офлайн-данные ${territoryName}"
+                    else -> "Офлайн-данные ${territoryName} загружены частично"
+                }
+                statusText.text = resultText
+                val retryHint = if (failedCells > 0) " Повторите загрузку, чтобы попробовать получить пропущенные участки." else ""
+                toast("${resultText}. Дорожных сегментов добавлено: $roadSegments; объектов поиска: $placeCount; участков с ошибками: $failedCells.$retryHint")
             } catch (error: Exception) {
                 statusText.text = "Загрузка офлайн-данных прервана"
                 toast("Не удалось завершить загрузку ${territoryName}: ${error.message ?: "ошибка сети"}. Уже сохранённые участки останутся в телефоне.")
