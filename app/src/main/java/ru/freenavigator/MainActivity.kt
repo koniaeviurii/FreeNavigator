@@ -1819,7 +1819,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         lastAcceptedFix = Location(location)
         lastAcceptedFixTime = location.time
-        if (!foregroundGuidanceStarted) checkRadarProximity(location)
+        // Radar warnings during navigation are owned by the foreground service.
         val projection = nearestRouteProjection(location.latitude, location.longitude)
         currentRouteIndex = projection.segmentIndex
         maybeReroute(location, projection.distanceMeters)
@@ -2384,7 +2384,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
 
     private fun checkRadarProximity(location: Location) {
         // Camera warnings are notification-based and must not depend on TTS readiness.
-        if (foregroundGuidanceStarted || !radarEnabled) return
+        if (navigationActive || !radarEnabled) return
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
         val raw = prefs.getString("radar_cache", null) ?: return
         try {
