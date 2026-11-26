@@ -143,6 +143,8 @@ class MainActivity : AppCompatActivity() {
     private var rerouteInProgress = false
     private var offRouteFixes = 0
     private var lastRerouteAt = 0L
+    private var lastAcceptedFix: Location? = null
+    private var lastAcceptedFixTime = 0L
 
     private val locationPermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -358,9 +360,8 @@ class MainActivity : AppCompatActivity() {
         }
         maneuverRow.addView(maneuverIcon, LinearLayout.LayoutParams(dp(48), dp(48)))
         maneuverRow.addView(maneuverInfo, LinearLayout.LayoutParams(0, -2, 1f))
-        navPanel.addView(maneuverRow, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(8)
-        })
+        maneuverRow.visibility = View.GONE
+        navPanel.addView(maneuverRow, LinearLayout.LayoutParams(-1, -2))
         val navTopRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -502,13 +503,6 @@ class MainActivity : AppCompatActivity() {
             hideDrawer()
             showOfflineMapsDialog()
         }
-        drawerItem(content, "⇩", "Загрузка дорожных данных", "Дороги для офлайн-маршрутов · радиус 8 км") {
-            hideDrawer()
-            downloadOfflineRoads()
-        }
-        drawerItem(content, "▣", "Импорт офлайн-поиска", "Загрузить базу мест GeoJSON") {
-            offlineIndexPicker.launch(arrayOf("application/geo+json", "application/json", "application/*", "*/*"))
-        }
         drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(content)
         drawerItem(content, "⌕", "Поиск", "Найти адрес или место") {
@@ -559,7 +553,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.9"
+            text = "FreeNavigator · версия 0.5.11"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -1426,6 +1420,9 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         nextVoiceStepIndex = 0
         currentRouteIndex = 0
         navigationActive = true
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        lastAcceptedFix = null
+        lastAcceptedFixTime = 0L
         navigationStartedAt = System.currentTimeMillis()
         arrivalAnnounced = false
         lastNavigationLocation = null
@@ -1450,7 +1447,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
                 override fun onProviderEnabled(provider: String) {}
                 override fun onProviderDisabled(provider: String) {
-                    if (navigationActive) navigationInfo?.text = "GPS выключен — включите местоположение"
+                    if (navigationActive) navigationInfo?.text = "Ожидаем доступные координаты"
                 }
             }
             navigationLocationListener = listener
@@ -1498,6 +1495,18 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
 
     private fun updateNavigation(location: Location) {
         if (!navigationActive) return
+        if (location.hasAccuracy() && location.accuracy > 60f) return
+        if (System.currentTimeMillis() - location.time > 15000L) return
+        val previousFix = lastAcceptedFix
+        if (previousFix != null) {
+            val deltaSeconds = ((location.time - lastAcceptedFixTime).coerceAtLeast(0L)) / 1000.0
+            if (deltaSeconds > 0.0) {
+                val jumpMeters = distanceBetween(previousFix.latitude, previousFix.longitude, location.latitude, location.longitude)
+                if (jumpMeters > (deltaSeconds * 65.0 + 120.0)) return
+            }
+        }
+        lastAcceptedFix = Location(location)
+        lastAcceptedFixTime = location.time
         if (!foregroundGuidanceStarted) checkRadarProximity(location)
         val projection = nearestRouteProjection(location.latitude, location.longitude)
         currentRouteIndex = projection.segmentIndex
@@ -1694,6 +1703,9 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
 
     private fun stopNavigation() {
         navigationActive = false
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        lastAcceptedFix = null
+        lastAcceptedFixTime = 0L
         navigationOffline = false
         rerouteInProgress = false
         offRouteFixes = 0

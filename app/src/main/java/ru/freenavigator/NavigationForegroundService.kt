@@ -43,6 +43,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private var lastFixAt = 0L
     private var lastProviderRetryAt = 0L
     private var waitingForGps = false
+    private var previousAcceptedLocation: Location? = null
+    private var previousAcceptedTime = 0L
     private val gpsWatchdog = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
@@ -50,7 +52,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 if (!waitingForGps) {
                     waitingForGps = true
                     updateNotification("Сигнал GPS потерян · маршрут сохранён, ищем сигнал")
-                    speak("Сигнал GPS потерян. Маршрут сохранён, продолжаю поиск сигнала.")
+                    // GPS-loss status is intentionally silent.
                 }
                 // Re-register location providers periodically. The route and next
                 // maneuver state are deliberately kept intact while GPS is unavailable.
@@ -130,12 +132,24 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onLocationChanged(location: Location) {
         if (arrived || !destinationLat.isFinite()) return
+        if (location.hasAccuracy() && location.accuracy > 60f) return
+        if (System.currentTimeMillis() - location.time > 15000L) return
+        val previous = previousAcceptedLocation
+        if (previous != null) {
+            val deltaSeconds = ((location.time - previousAcceptedTime).coerceAtLeast(0L)) / 1000.0
+            if (deltaSeconds > 0.0) {
+                val jump = distanceMeters(previous.latitude, previous.longitude, location.latitude, location.longitude)
+                if (jump > deltaSeconds * 65.0 + 120.0) return
+            }
+        }
+        previousAcceptedLocation = Location(location)
+        previousAcceptedTime = location.time
         lastFixAt = System.currentTimeMillis()
         lastProviderRetryAt = lastFixAt
         if (waitingForGps) {
             waitingForGps = false
             updateNotification("GPS восстановлен · ведение активно")
-            speak("Сигнал GPS восстановлен")
+            // GPS restoration is handled silently.
         }
         checkRadarProximity(location)
         while (nextStep < instructions.size) {
@@ -362,7 +376,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 }
             }
         } catch (_: SecurityException) {
-            speak("Нет разрешения на получение координат GPS")
+            // Avoid repeated GPS-status voice messages.
         } catch (_: Exception) { }
     }
 
@@ -385,7 +399,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         if (!anyEnabled && !waitingForGps) {
             waitingForGps = true
             updateNotification("GPS выключен · включите местоположение")
-            speak("GPS выключен. Включите местоположение для продолжения маршрута.")
+            // GPS status is not spoken; guidance remains saved.
         }
     }
 
