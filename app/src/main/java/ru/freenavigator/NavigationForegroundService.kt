@@ -212,7 +212,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 val id: String,
                 val distance: Double,
                 val stage: Int,
-                val message: String
+                val directionKnown: Boolean
             )
             val events = mutableListOf<RadarEvent>()
             for (i in 0 until cameras.length()) {
@@ -242,11 +242,6 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     continue
                 }
                 val currentStage = radarWarningStages[id] ?: 0
-                val limit = camera.optString("maxspeed")
-                    .takeIf { it.isNotBlank() }
-                    ?.let { " Ограничение скорости $it." }
-                    .orEmpty()
-                val roundedDistance = ((distance / 50.0).roundToInt() * 50).coerceAtLeast(50)
                 val event = when {
                     currentStage == 0 && distance <= 800.0 -> {
                         val stage = when {
@@ -254,19 +249,14 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                             distance <= 300.0 -> 2
                             else -> 1
                         }
-                        val warning = if (stage == 3) {
-                            "Камера контроля скорости рядом.$limit"
-                        } else {
-                            "Через $roundedDistance метров камера контроля скорости.$limit"
-                        }
-                        RadarEvent(id, distance, stage, warning)
+                        RadarEvent(id, distance, stage, direction != null)
                     }
-                    currentStage == 1 && distance <= 60.0 ->
-                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
                     currentStage == 1 && distance <= 300.0 ->
-                        RadarEvent(id, distance, 2, "Через $roundedDistance метров камера контроля скорости.$limit")
+                        RadarEvent(id, distance, 2, direction != null)
+                    currentStage == 1 && distance <= 60.0 ->
+                        RadarEvent(id, distance, 3, direction != null)
                     currentStage == 2 && distance <= 60.0 ->
-                        RadarEvent(id, distance, 3, "Камера контроля скорости рядом.$limit")
+                        RadarEvent(id, distance, 3, direction != null)
                     else -> null
                 }
                 if (event != null) events.add(event)
@@ -276,11 +266,42 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             val selected = events.minByOrNull { it.distance }
             if (selected != null) {
                 radarWarningStages[selected.id] = selected.stage
-                speak(selected.message)
+                val distanceText = if (selected.distance <= 60.0) "Рядом"
+                    else "Через ${((selected.distance / 50.0).roundToInt() * 50).coerceAtLeast(50)} м"
+                val camera = (0 until cameras.length()).asSequence()
+                    .mapNotNull { cameras.optJSONObject(it) }
+                    .firstOrNull { it.optString("id") == selected.id }
+                val rearDirection = camera?.optString("direction_backward").orEmpty().isNotBlank()
+                val directionText = when {
+                    rearDirection -> " · контроль в спину"
+                    selected.directionKnown -> " · направление учтено"
+                    else -> ""
+                }
+                postRadarAlert(distanceText + directionText)
             }
         } catch (_: Exception) {
             // A malformed cache must not interrupt route guidance.
         }
+    }
+
+    private fun postRadarAlert(message: String) {
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(RADAR_CHANNEL_ID, "Предупреждения о камерах", NotificationManager.IMPORTANCE_HIGH)
+                manager.createNotificationChannel(channel)
+            }
+            val notification = NotificationCompat.Builder(this, RADAR_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("Камера контроля скорости")
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setAutoCancel(true)
+                .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+                .build()
+            manager.notify(RADAR_NOTIFICATION_ID, notification)
+        } catch (_: Exception) { }
     }
 
     private fun speak(message: String, utteranceId: String = "fn-service-${System.nanoTime()}") {
@@ -404,6 +425,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     }
 
     companion object {
+        private const val RADAR_CHANNEL_ID = "radar_alerts"
+        private const val RADAR_NOTIFICATION_ID = 4202
         const val ACTION_START = "ru.freenavigator.action.START_NAVIGATION"
         const val ACTION_STOP = "ru.freenavigator.action.STOP_NAVIGATION"
         const val EXTRA_DEST_LAT = "destination_lat"
