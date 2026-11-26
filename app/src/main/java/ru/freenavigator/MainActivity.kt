@@ -323,10 +323,36 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Уменьшить карту"
             setOnClickListener { changeZoom(-1.0) }
         }
+        val compassButton = TextView(this).apply {
+            text = "↑N"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF1769AA.toInt())
+            setBackgroundColor(0xF7FFFFFF.toInt())
+            elevation = dp(5).toFloat()
+            contentDescription = "Повернуть карту на север"
+            setOnClickListener {
+                val current = map?.cameraPosition
+                if (current != null) {
+                    map?.animateCamera(
+                        org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
+                            CameraPosition.Builder()
+                                .target(current.target)
+                                .zoom(current.zoom)
+                                .bearing(0.0)
+                                .tilt(current.tilt)
+                                .build()
+                        )
+                    )
+                }
+            }
+        }
         rightButtons.addView(locateButton, LinearLayout.LayoutParams(dp(52), dp(52)))
         rightButtons.addView(themeButton, LinearLayout.LayoutParams(dp(52), dp(52)).apply { topMargin = dp(9) })
         rightButtons.addView(zoomInButton, LinearLayout.LayoutParams(dp(52), dp(52)).apply { topMargin = dp(9) })
         rightButtons.addView(zoomOutButton, LinearLayout.LayoutParams(dp(52), dp(52)).apply { topMargin = dp(9) })
+        rightButtons.addView(compassButton, LinearLayout.LayoutParams(dp(52), dp(52)).apply { topMargin = dp(9) })
         root.addView(rightButtons, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL).apply {
             rightMargin = dp(10)
         })
@@ -478,6 +504,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
         mapView.getMapAsync { readyMap ->
             map = readyMap
+            readyMap.uiSettings.isCompassEnabled = false
             loadMapStyle()
             readyMap.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(55.751244, 37.618423))
@@ -567,7 +594,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.17"
+            text = "FreeNavigator · версия 0.5.22"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -1286,10 +1313,24 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                     toast("По запросу ничего не найдено")
                 } else {
                     statusText.text = "Найдено: ${results.size}"
+                    val origin = currentDeviceLocation()
+                    val sortedResults = if (origin != null) {
+                        results.sortedBy { item ->
+                            distanceBetween(origin.latitude, origin.longitude, item.lat, item.lon)
+                        }
+                    } else results
+                    val displayLabels = sortedResults.map { item ->
+                        val distanceLabel = origin?.let {
+                            val meters = distanceBetween(it.latitude, it.longitude, item.lat, item.lon)
+                            if (meters < 1000.0) "${meters.roundToInt()} м"
+                            else "${(meters / 1000.0).roundToInt()} км"
+                        }
+                        listOfNotNull(item.shortLabel, distanceLabel).joinToString(" · ")
+                    }
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Результаты поиска")
-                        .setItems(results.map { it.shortLabel }.toTypedArray()) { _, index ->
-                            val item = results[index]
+                        .setItems(displayLabels.toTypedArray()) { _, index ->
+                            val item = sortedResults[index]
                             showSearchResultMarker(item.lat, item.lon)
                             map?.animateCamera(
                                 org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(
