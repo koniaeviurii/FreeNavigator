@@ -39,6 +39,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private var previousStepDistances = doubleArrayOf()
     private var nextStep = 0
     private var arrived = false
+    private var radarOnlyMode = false
     private val radarWarningStages = mutableMapOf<String, Int>()
     private val requestedProviders = mutableSetOf<String>()
     private val watchdogHandler = Handler(Looper.getMainLooper())
@@ -55,7 +56,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             if (!arrived && lastFixAt > 0L && now - lastFixAt > 15000L) {
                 if (!waitingForGps) {
                     waitingForGps = true
-                    updateNotification("Сигнал GPS потерян · маршрут сохранён, ищем сигнал")
+                    updateNotification(if (radarOnlyMode) "Сигнал GPS потерян · антирадар ждёт координаты" else "Сигнал GPS потерян · маршрут сохранён, ищем сигнал")
                     // GPS-loss status is intentionally silent.
                 }
                 // Re-register location providers periodically. The route and next
@@ -91,10 +92,19 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             stopSelf()
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_START) {
+        if (intent?.action == ACTION_RADAR_ONLY || intent == null) {
+            val forceRadarOnly = intent?.getBooleanExtra(EXTRA_FORCE_RADAR_ONLY, false) ?: false
+            if (radarOnlyMode) return START_STICKY
+            // A stale Activity must not replace an active navigation session when it
+            // returns to the foreground. An explicit route stop may request the switch.
+            if (destinationLat.isFinite() && !forceRadarOnly) return START_STICKY
+            return startRadarOnly()
+        }
+        if (intent.action != ACTION_START) {
             stopSelf()
             return START_NOT_STICKY
         }
+        radarOnlyMode = false
         destinationLat = intent.getDoubleExtra(EXTRA_DEST_LAT, Double.NaN)
         destinationLon = intent.getDoubleExtra(EXTRA_DEST_LON, Double.NaN)
         stepLatitudes = intent.getDoubleArrayExtra(EXTRA_STEP_LATS) ?: doubleArrayOf()
@@ -138,8 +148,51 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         return START_STICKY
     }
 
+    private fun startRadarOnly(): Int {
+        val prefs = getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("radar_enabled", true)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        radarOnlyMode = true
+        arrived = false
+        destinationLat = Double.NaN
+        destinationLon = Double.NaN
+        stepLatitudes = doubleArrayOf()
+        stepLongitudes = doubleArrayOf()
+        instructions = emptyArray()
+        announced = emptyArray()
+        previousStepDistances = doubleArrayOf()
+        nextStep = 0
+        previousAcceptedLocation = null
+        previousAcceptedTime = 0L
+        waitingForGps = false
+        removeLocationUpdates()
+        startForeground(NOTIFICATION_ID, buildNotification("Антирадар активен · контроль камер"))
+        val fine = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarse = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) {
+            stopGuidance()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        lastFixAt = System.currentTimeMillis()
+        lastProviderRetryAt = lastFixAt
+        requestAvailableProviders()
+        try {
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+                .mapNotNull { provider -> try { locationManager.getLastKnownLocation(provider) } catch (_: Exception) { null } }
+                .maxByOrNull { it.time }
+                ?.takeIf { System.currentTimeMillis() - it.time <= 30000L }
+                ?.let(::onLocationChanged)
+        } catch (_: SecurityException) { }
+        watchdogHandler.removeCallbacks(gpsWatchdog)
+        watchdogHandler.postDelayed(gpsWatchdog, 5000L)
+        return START_STICKY
+    }
+
     override fun onLocationChanged(location: Location) {
-        if (arrived || !destinationLat.isFinite()) return
+        if (!radarOnlyMode && (arrived || !destinationLat.isFinite())) return
         val now = System.currentTimeMillis()
         // Permit a 100 m network-provider fix only after a recent GPS gap.
         // This bridges brief satellite losses without loosening normal GPS filtering.
@@ -165,10 +218,11 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         lastProviderRetryAt = lastFixAt
         if (waitingForGps) {
             waitingForGps = false
-            updateNotification("GPS восстановлен · ведение активно")
+            updateNotification(if (radarOnlyMode) "GPS восстановлен · антирадар активен" else "GPS восстановлен · ведение активно")
             // GPS restoration is handled silently.
         }
         checkRadarProximity(location)
+        if (radarOnlyMode) return
         while (nextStep < instructions.size) {
             val index = nextStep
             val distance = distanceMeters(location.latitude, location.longitude, stepLatitudes[index], stepLongitudes[index])
@@ -486,6 +540,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     companion object {
         private const val RADAR_CHANNEL_ID = "radar_alerts_v2"
         private const val RADAR_NOTIFICATION_ID = 4202
+        const val ACTION_RADAR_ONLY = "ru.freenavigator.action.RADAR_ONLY"
+        const val EXTRA_FORCE_RADAR_ONLY = "force_radar_only"
         const val ACTION_START = "ru.freenavigator.action.START_NAVIGATION"
         const val ACTION_STOP = "ru.freenavigator.action.STOP_NAVIGATION"
         const val ACTION_TTS_STATUS = "ru.freenavigator.action.TTS_STATUS"

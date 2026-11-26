@@ -637,7 +637,10 @@ class MainActivity : AppCompatActivity() {
                 startRadarMonitoring()
                 requestLocationOrCenter()
                 currentDeviceLocation()?.let { enqueueRadarRefresh(it.latitude, it.longitude, true) }
-            } else stopRadarMonitoring()
+            } else {
+                stopRadarMonitoring()
+                if (!navigationActive) stopRadarBackgroundService()
+            }
             toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
         }
         
@@ -2046,7 +2049,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         rerouteInProgress = false
         offRouteFixes = 0
         foregroundGuidanceStarted = false
-        try { startService(Intent(this, NavigationForegroundService::class.java).setAction(NavigationForegroundService.ACTION_STOP)) } catch (_: Exception) { }
+        try {
+            val serviceIntent = Intent(this, NavigationForegroundService::class.java).apply {
+                action = if (radarEnabled) NavigationForegroundService.ACTION_RADAR_ONLY else NavigationForegroundService.ACTION_STOP
+                putExtra(NavigationForegroundService.EXTRA_FORCE_RADAR_ONLY, true)
+            }
+            if (radarEnabled) ContextCompat.startForegroundService(this, serviceIntent)
+            else startService(serviceIntent)
+        } catch (_: Exception) { }
         pendingNavigation = null
         try {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
@@ -2198,6 +2208,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .setPositiveButton("Выйти") { _, _ ->
                 stopNavigation()
                 stopRadarMonitoring()
+                stopRadarBackgroundService()
                 try { speech?.stop() } catch (_: Exception) {}
                 finishAffinity()
             }
@@ -2293,7 +2304,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .setNegativeButton(if (radarEnabled) "Выключить антирадар" else "Включить антирадар") { _, _ ->
                 radarEnabled = !radarEnabled
                 prefs.edit().putBoolean("radar_enabled", radarEnabled).apply()
-                if (radarEnabled) startRadarMonitoring() else stopRadarMonitoring()
+                if (radarEnabled) startRadarMonitoring() else {
+                    stopRadarMonitoring()
+                    if (!navigationActive) stopRadarBackgroundService()
+                }
                 refreshRadarMarkers()
                 toast(if (radarEnabled) "Антирадар включён" else "Антирадар выключен")
             }
@@ -2381,16 +2395,17 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun startRadarMonitoring() {
-        if (!radarEnabled || radarLocationListener != null) return
+        if (!radarEnabled) return
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) return
+        if (!navigationActive) startRadarBackgroundService()
+        if (radarLocationListener != null) return
         try {
             val manager = getSystemService(LOCATION_SERVICE) as LocationManager
             val listener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     refreshRadarMarkers()
-                    checkRadarProximity(location)
                     enqueueRadarRefresh(location.latitude, location.longitude, false)
                 }
                 @Deprecated("Deprecated in Java")
@@ -2408,8 +2423,26 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                     // Keep radar monitoring active with whichever providers are available.
                 }
             }
-            currentDeviceLocation()?.let { refreshRadarMarkers(); checkRadarProximity(it); enqueueRadarRefresh(it.latitude, it.longitude, false) }
+            currentDeviceLocation()?.let { refreshRadarMarkers(); enqueueRadarRefresh(it.latitude, it.longitude, false) }
         } catch (_: Exception) { radarLocationListener = null }
+    }
+
+    private fun startRadarBackgroundService() {
+        if (!radarEnabled || navigationActive) return
+        try {
+            val intent = Intent(this, NavigationForegroundService::class.java)
+                .setAction(NavigationForegroundService.ACTION_RADAR_ONLY)
+            ContextCompat.startForegroundService(this, intent)
+        } catch (error: Exception) {
+            android.util.Log.e("FreeNavigator", "Unable to start background radar service", error)
+        }
+    }
+
+    private fun stopRadarBackgroundService() {
+        try {
+            startService(Intent(this, NavigationForegroundService::class.java)
+                .setAction(NavigationForegroundService.ACTION_STOP))
+        } catch (_: Exception) { }
     }
 
     private fun stopRadarMonitoring() {
@@ -2571,7 +2604,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 navigationLocationListener?.let { manager.removeUpdates(it) }
             } catch (_: Exception) { }
             navigationLocationListener = null
-        } else stopNavigation()
+        }
         try { unregisterReceiver(guidanceStatusReceiver) } catch (_: Exception) { }
         try { unregisterReceiver(radarAlertReceiver) } catch (_: Exception) { }
         radarPopupHandler.removeCallbacksAndMessages(null)
