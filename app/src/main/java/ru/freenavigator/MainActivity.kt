@@ -587,9 +587,17 @@ class MainActivity : AppCompatActivity() {
         content.addView(subheading)
         drawerDivider(content)
         drawerItem(content, "⌖", "Карта и режим", "Онлайн / офлайн") { showMapModeDialog() }
-        drawerItem(content, "⇩", "Загрузка офлайн-карт", "Сохранить текущую область на телефон") {
+        drawerItem(content, "⇩", "Загрузка офлайн-карт", "Сохранить выбранную территорию") {
             hideDrawer()
             showOfflineMapsDialog()
+        }
+        drawerItem(content, "⌕", "Загрузить офлайн-поиск", "Сохранить адреса и места рядом с картой") {
+            hideDrawer()
+            downloadOfflinePlaces()
+        }
+        drawerItem(content, "⌁", "Загрузить дорожную сеть", "Подготовить маршруты без интернета рядом с картой") {
+            hideDrawer()
+            downloadOfflineRoads()
         }
         drawerItem(content, "◇", "Вид карты", "2D / 3D / спутник") { showMapTypeDialog() }
         drawerDivider(content)
@@ -724,6 +732,83 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
 
+
+    private fun downloadOfflinePlaces() {
+        val center = map?.cameraPosition?.target ?: currentDeviceLocation()?.let { LatLng(it.latitude, it.longitude) }
+        if (center == null) {
+            toast("Сначала определите местоположение или откройте нужную область карты")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Загрузить места для офлайн-поиска?")
+            .setMessage("Сохраним названные места, организации, магазины, аптеки, больницы, станции и достопримечательности в радиусе 10 км. Данные будут добавлены к ранее сохранённым объектам.")
+            .setPositiveButton("Загрузить") { _, _ ->
+                statusText.text = "Загружаем места для офлайн-поиска…"
+                screenScope.launch {
+                    try {
+                        val count = withContext(Dispatchers.IO) {
+                            val query = "[out:json][timeout:60];nwr(around:10000,${center.latitude},${center.longitude})[name];out center;"
+                            val encoded = URLEncoder.encode(query, "UTF-8")
+                            val endpoints = listOf(
+                                "https://overpass-api.de/api/interpreter?data=",
+                                "https://overpass.kumi.systems/api/interpreter?data="
+                            )
+                            var body: String? = null
+                            var lastError: Exception? = null
+                            for (endpoint in endpoints) {
+                                try { body = httpGetLong(endpoint + encoded); break }
+                                catch (error: Exception) { lastError = error }
+                            }
+                            val response = body ?: throw lastError ?: IllegalStateException("Серверы мест недоступны")
+                            val elements = JSONObject(response).optJSONArray("elements")
+                                ?: throw IllegalStateException("Сервер не вернул список мест")
+                            val features = org.json.JSONArray()
+                            val categories = setOf("amenity", "shop", "tourism", "leisure", "historic", "railway", "healthcare", "emergency", "office", "craft", "natural", "public_transport")
+                            for (i in 0 until elements.length()) {
+                                val item = elements.optJSONObject(i) ?: continue
+                                val tags = item.optJSONObject("tags") ?: continue
+                                val name = sequenceOf("name:ru", "name", "official_name", "brand")
+                                    .map { tags.optString(it).trim() }
+                                    .firstOrNull { it.isNotBlank() && it != "null" } ?: continue
+                                val categoryKey = categories.firstOrNull { tags.has(it) } ?: continue
+                                val centerPoint = item.optJSONObject("center")
+                                val lat = if (item.has("lat")) item.optDouble("lat", Double.NaN) else centerPoint?.optDouble("lat", Double.NaN) ?: Double.NaN
+                                val lon = if (item.has("lon")) item.optDouble("lon", Double.NaN) else centerPoint?.optDouble("lon", Double.NaN) ?: Double.NaN
+                                if (!lat.isFinite() || !lon.isFinite()) continue
+                                features.put(JSONObject().apply {
+                                    put("type", "Feature")
+                                    put("id", item.optString("type") + "/" + item.optString("id"))
+                                    put("geometry", JSONObject().apply {
+                                        put("type", "Point")
+                                        put("coordinates", org.json.JSONArray().put(lon).put(lat))
+                                    })
+                                    put("properties", JSONObject().apply {
+                                        put("osm_id", item.optString("type") + "/" + item.optString("id"))
+                                        put("name", name)
+                                        put("name:ru", tags.optString("name:ru", name))
+                                        put("category", categoryKey + ":" + tags.optString(categoryKey))
+                                        put("city", tags.optString("addr:city", tags.optString("addr:suburb", "")))
+                                    })
+                                })
+                                if (features.length() >= 12000) break
+                            }
+                            if (features.length() == 0) throw IllegalStateException("В этой области не найдено именованных объектов нужных категорий")
+                            val geoJson = JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+                            java.io.ByteArrayInputStream(geoJson.toByteArray(Charsets.UTF_8)).use {
+                                OfflinePlaceIndex(this@MainActivity).mergeFromGeoJson(it)
+                            }
+                        }
+                        statusText.text = "Офлайн-поиск обновлён"
+                        toast("Добавлено объектов: $count. Они доступны в поиске без интернета.")
+                    } catch (error: Exception) {
+                        statusText.text = "Не удалось загрузить офлайн-поиск"
+                        toast("Загрузка мест не удалась: ${error.message ?: "ошибка сети"}")
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
 
     private fun downloadOfflineRoads() {
         val center = map?.cameraPosition?.target ?: currentDeviceLocation()?.let { LatLng(it.latitude, it.longitude) }
