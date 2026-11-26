@@ -2205,6 +2205,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .show()
     }
 
+    private fun appVersionName(): String =
+        try { packageManager.getPackageInfo(packageName, 0).versionName ?: "0.6.0" }
+        catch (_: Exception) { "0.6.0" }
+
     private fun radarStatusText(): String {
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
         val updated = prefs.getLong("radar_updated_at", 0L)
@@ -2223,7 +2227,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         // Use a dedicated migration marker: older releases also wrote radar_source_date
         // for a small GPS-centred fragment, which must not block installation of the
         // bundled nationwide baseline.
-        val bundledSnapshotId = "speedcams-world-${BuildConfig.VERSION_CODE}"
+        val bundledSnapshotId = "speedcams-world-${appVersionName()}"
         if (prefs.getString("radar_bundled_snapshot", null) == bundledSnapshotId) return
         try {
             val bundled = assets.open("radar/ru-all.csv").use { RadarCsvParser.parse(it) }
@@ -2246,7 +2250,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             merged.values.toList().takeLast(20000).forEach { combined.put(it) }
             prefs.edit()
                 .putString("radar_cache", combined.toString())
-                .putString("radar_source_date", "сборка ${BuildConfig.VERSION_NAME}")
+                .putString("radar_source_date", "сборка ${appVersionName()}")
                 .putString("radar_bundled_snapshot", bundledSnapshotId)
                 .putString("radar_last_result", "Предустановленная база России: ${bundled.length()} камер, OpenStreetMap")
                 .apply()
@@ -2273,7 +2277,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val details = if (!error.isNullOrBlank()) "\nОшибка последней загрузки: $error" else if (!lastResult.isNullOrBlank()) "\nПоследний результат: $lastResult" else ""
         AlertDialog.Builder(this)
             .setTitle("База камер")
-            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nНачальная база: OpenStreetMap contributors · SpeedCams.world, загружена при сборке APK ${BuildConfig.VERSION_NAME}; лицензия ODbL 1.0. Данные могут быть неполными и устаревать.\n\nОбновление всей базы России загружается через Wi-Fi.")
+            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nНачальная база: OpenStreetMap contributors · SpeedCams.world, загружена при сборке APK ${appVersionName()}; лицензия ODbL 1.0. Данные могут быть неполными и устаревать.\n\nОбновление всей базы России загружается через Wi-Fi.")
             .setPositiveButton("Загрузить / обновить") { _, _ ->
                 if (!radarEnabled) {
                     radarEnabled = true
