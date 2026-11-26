@@ -9,6 +9,8 @@ import android.content.Intent
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -40,6 +42,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private val radarWarningStages = mutableMapOf<String, Int>()
     private val requestedProviders = mutableSetOf<String>()
     private val watchdogHandler = Handler(Looper.getMainLooper())
+    private val radarSoundHandler = Handler(Looper.getMainLooper())
+    private var radarToneGenerator: ToneGenerator? = null
     private var lastFixAt = 0L
     private var lastProviderRetryAt = 0L
     private var waitingForGps = false
@@ -278,12 +282,9 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     .mapNotNull { cameras.optJSONObject(it) }
                     .firstOrNull { it.optString("id") == selected.id }
                 val rearDirection = camera?.optString("direction_backward").orEmpty().isNotBlank()
-                val directionText = when {
-                    rearDirection -> " · контроль в спину"
-                    selected.directionKnown -> " · направление учтено"
-                    else -> ""
-                }
+                val directionText = if (rearDirection) " · контроль в спину" else ""
                 postRadarAlert(distanceText + directionText, selected.stage)
+                playRadarTone(selected.stage)
             }
         } catch (_: Exception) {
             // A malformed cache must not interrupt route guidance.
@@ -293,8 +294,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     private fun postRadarAlert(message: String, stage: Int) {
         try {
             val manager = getSystemService(NotificationManager::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                manager.getNotificationChannel(RADAR_CHANNEL_ID) == null) {
                 val channel = NotificationChannel(RADAR_CHANNEL_ID, "Предупреждения о камерах", NotificationManager.IMPORTANCE_HIGH)
+                    .apply { setSound(null, null); enableVibration(true) }
                 manager.createNotificationChannel(channel)
             }
             val notification = NotificationCompat.Builder(this, RADAR_CHANNEL_ID)
@@ -304,13 +307,30 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setAutoCancel(true)
-                .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+                .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
                 .build()
             // Different IDs make Android treat each closer warning as a new alert.
             for (previousStage in 1..3) {
                 if (previousStage != stage) manager.cancel(RADAR_NOTIFICATION_ID + previousStage)
             }
             manager.notify(RADAR_NOTIFICATION_ID + stage, notification)
+        } catch (_: Exception) { }
+    }
+
+    /** Short alert pattern becomes faster as the vehicle approaches the camera. */
+    private fun playRadarTone(stage: Int) {
+        try {
+            radarSoundHandler.removeCallbacksAndMessages(null)
+            val tone = radarToneGenerator ?: ToneGenerator(AudioManager.STREAM_ALARM, 90).also {
+                radarToneGenerator = it
+            }
+            val count = when (stage) { 1 -> 1; 2 -> 2; else -> 3 }
+            val interval = when (stage) { 1 -> 700L; 2 -> 350L; else -> 180L }
+            repeat(count) { index ->
+                radarSoundHandler.postDelayed({
+                    try { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 130) } catch (_: Exception) { }
+                }, index * interval)
+            }
         } catch (_: Exception) { }
     }
 
@@ -397,6 +417,9 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onDestroy() {
         watchdogHandler.removeCallbacks(gpsWatchdog)
+        radarSoundHandler.removeCallbacksAndMessages(null)
+        try { radarToneGenerator?.release() } catch (_: Exception) { }
+        radarToneGenerator = null
         stopGuidance()
         tts?.stop()
         tts?.shutdown()
@@ -447,7 +470,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
     }
 
     companion object {
-        private const val RADAR_CHANNEL_ID = "radar_alerts"
+        private const val RADAR_CHANNEL_ID = "radar_alerts_v2"
         private const val RADAR_NOTIFICATION_ID = 4202
         const val ACTION_START = "ru.freenavigator.action.START_NAVIGATION"
         const val ACTION_STOP = "ru.freenavigator.action.STOP_NAVIGATION"
