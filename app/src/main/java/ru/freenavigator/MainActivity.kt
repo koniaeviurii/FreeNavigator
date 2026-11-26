@@ -436,18 +436,13 @@ class MainActivity : AppCompatActivity() {
         maneuverRow.addView(maneuverInfo, LinearLayout.LayoutParams(0, -2, 1f))
         maneuverRow.visibility = View.GONE
         navPanel.addView(maneuverRow, LinearLayout.LayoutParams(-1, -2))
-        val navTopRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val navInfo = TextView(this).apply {
+        // Keep status text available to the navigation logic, but do not show
+        // a duplicate duration/status row in the compact route panel.
+        navigationInfo = TextView(this).apply {
             text = "Получаем координаты GPS…"
             textSize = 13f
             setTextColor(0xFF173B5E.toInt())
         }
-        navigationInfo = navInfo
-        navTopRow.addView(navInfo, LinearLayout.LayoutParams(-1, -2))
-        navPanel.addView(navTopRow)
         val progressRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
