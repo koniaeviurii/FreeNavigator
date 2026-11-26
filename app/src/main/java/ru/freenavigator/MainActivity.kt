@@ -2212,19 +2212,34 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     /** Copies the bundled Russia camera snapshot into local storage on first launch. */
     private fun seedBundledRadarDatabase() {
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
-        val existingCount = try {
-            org.json.JSONArray(prefs.getString("radar_cache", "[]")).length()
-        } catch (_: Exception) { 0 }
-        if (existingCount > 0) return
+        // Older app versions stored only a small GPS-centred fragment. Install the
+        // national baseline once even when such a partial cache already exists.
+        if (!prefs.getString("radar_source_date", null).isNullOrBlank()) return
         try {
-            val cameras = assets.open("radar/ru-all.csv").use { RadarCsvParser.parse(it) }
-            if (cameras.length() < 1000) throw IllegalStateException("Встроенная база камер неполная")
+            val bundled = assets.open("radar/ru-all.csv").use { RadarCsvParser.parse(it) }
+            if (bundled.length() < 1000) throw IllegalStateException("Встроенная база камер неполная")
+            val merged = linkedMapOf<String, org.json.JSONObject>()
+            for (i in 0 until bundled.length()) {
+                val camera = bundled.optJSONObject(i) ?: continue
+                val id = camera.optString("id")
+                if (id.isNotBlank()) merged[id] = camera
+            }
+            val oldCache = try {
+                org.json.JSONArray(prefs.getString("radar_cache", "[]"))
+            } catch (_: Exception) { org.json.JSONArray() }
+            for (i in 0 until oldCache.length()) {
+                val camera = oldCache.optJSONObject(i) ?: continue
+                val id = camera.optString("id")
+                if (id.isNotBlank()) merged[id] = camera
+            }
+            val combined = org.json.JSONArray()
+            merged.values.takeLast(20000).forEach { combined.put(it) }
             prefs.edit()
-                .putString("radar_cache", cameras.toString())
+                .putString("radar_cache", combined.toString())
                 .putString("radar_source_date", "21.09.2026")
-                .putString("radar_last_result", "Предустановленная база России: ${cameras.length()} камер, OpenStreetMap")
+                .putString("radar_last_result", "Предустановленная база России: ${bundled.length()} камер, OpenStreetMap")
                 .apply()
-            android.util.Log.i("FreeNavigator", "Bundled Russia radar database installed: ${cameras.length()} cameras")
+            android.util.Log.i("FreeNavigator", "Bundled Russia radar database installed: ${bundled.length()} cameras")
         } catch (error: Exception) {
             android.util.Log.e("FreeNavigator", "Bundled radar database is unavailable", error)
         }
