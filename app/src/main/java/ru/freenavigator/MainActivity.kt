@@ -2233,7 +2233,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 if (id.isNotBlank()) merged[id] = camera
             }
             val combined = org.json.JSONArray()
-            merged.values.takeLast(20000).forEach { combined.put(it) }
+            merged.values.toList().takeLast(20000).forEach { combined.put(it) }
             prefs.edit()
                 .putString("radar_cache", combined.toString())
                 .putString("radar_source_date", "21.09.2026")
