@@ -2208,7 +2208,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val details = if (!error.isNullOrBlank()) "\nОшибка последней загрузки: $error" else if (!lastResult.isNullOrBlank()) "\nПоследний результат: $lastResult" else ""
         AlertDialog.Builder(this)
             .setTitle("База камер")
-            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nЗагрузка использует ваше текущее местоположение и интернет.")
+            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nЗагрузка использует ваше текущее местоположение и Wi-Fi (не тарифицируемую сеть).")
             .setPositiveButton("Загрузить / обновить") { _, _ ->
                 if (!radarEnabled) {
                     radarEnabled = true
@@ -2291,7 +2291,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun scheduleRadarUpdates() {
-        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
         val periodic = PeriodicWorkRequestBuilder<RadarUpdateWorker>(24, TimeUnit.HOURS)
             .setConstraints(constraints).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -2308,7 +2308,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val moved = oldLat == 0.0 || distanceBetween(latitude, longitude, oldLat, oldLon) > 15000.0
         if (!force && updated > 0L && System.currentTimeMillis() - updated < 24L * 60L * 60L * 1000L && !moved) return
         val request = OneTimeWorkRequestBuilder<RadarUpdateWorker>()
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
             .setInputData(workDataOf("center_lat" to latitude, "center_lon" to longitude))
             .build()
         WorkManager.getInstance(this).enqueueUniqueWork("freenavigator-radar-refresh", if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
