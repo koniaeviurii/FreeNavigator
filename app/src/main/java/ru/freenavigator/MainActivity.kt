@@ -108,6 +108,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var drawerScrim: View
     private lateinit var drawerPanel: LinearLayout
     private var searchExpanded = false
+    private var radarPopupText: TextView? = null
+    private val radarPopupHandler = Handler(Looper.getMainLooper())
+    private val hideRadarPopup = Runnable { radarPopupText?.visibility = View.GONE }
     private var radarEnabled = true
     private var locationSource: GeoJsonSource? = null
     private var radarSource: GeoJsonSource? = null
@@ -122,6 +125,12 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (!navigationActive) return
             foregroundGuidanceStarted = intent?.getBooleanExtra(NavigationForegroundService.EXTRA_TTS_READY, false) ?: false
+        }
+    }
+    private val radarAlertReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val message = intent?.getStringExtra(NavigationForegroundService.EXTRA_RADAR_MESSAGE).orEmpty()
+            if (message.isNotBlank()) showRadarPopup(message)
         }
     }
     private var navigationLocationListener: LocationListener? = null
@@ -207,6 +216,11 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(
             this, guidanceStatusReceiver,
             IntentFilter(NavigationForegroundService.ACTION_TTS_STATUS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            this, radarAlertReceiver,
+            IntentFilter(NavigationForegroundService.ACTION_RADAR_ALERT),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -499,6 +513,24 @@ class MainActivity : AppCompatActivity() {
         maneuverHudText = bannerText
         root.addView(maneuverBanner, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
             leftMargin = dp(82); rightMargin = dp(70); topMargin = dp(66)
+        })
+
+        val radarPopup = TextView(this).apply {
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xEEB3261E.toInt())
+                cornerRadius = dp(12).toFloat()
+            }
+            elevation = dp(12).toFloat()
+            visibility = View.GONE
+        }
+        radarPopupText = radarPopup
+        root.addView(radarPopup, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(132)
         })
 
         // Drawer is added last so it opens above the map controls.
@@ -2283,6 +2315,16 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         } catch (_: Exception) {}
     }
 
+    private fun showRadarPopup(message: String) {
+        radarPopupText?.let { view ->
+            radarPopupHandler.removeCallbacks(hideRadarPopup)
+            view.text = message
+            view.visibility = View.VISIBLE
+            view.bringToFront()
+            radarPopupHandler.postDelayed(hideRadarPopup, 3000L)
+        }
+    }
+
     private fun showRadarNotification(distanceMeters: Double, rearDirection: Boolean, stage: Int) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "radar_alerts"
@@ -2309,6 +2351,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             else -> "Через ${((distanceMeters / 50.0).roundToInt() * 50).coerceAtLeast(50)} м"
         }
         val directionText = if (rearDirection) " · контроль в спину" else ""
+        showRadarPopup("$distanceText$directionText")
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Камера контроля скорости")
@@ -2352,6 +2395,8 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             navigationLocationListener = null
         } else stopNavigation()
         try { unregisterReceiver(guidanceStatusReceiver) } catch (_: Exception) { }
+        try { unregisterReceiver(radarAlertReceiver) } catch (_: Exception) { }
+        radarPopupHandler.removeCallbacksAndMessages(null)
         speech?.stop(); speech?.shutdown(); screenScope.cancel(); mapView.onDestroy(); super.onDestroy()
     }
 

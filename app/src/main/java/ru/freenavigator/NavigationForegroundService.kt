@@ -317,6 +317,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 if (previousStage != stage) manager.cancel(RADAR_NOTIFICATION_ID + previousStage)
             }
             manager.notify(RADAR_NOTIFICATION_ID + stage, notification)
+            sendBroadcast(
+                Intent(ACTION_RADAR_ALERT).setPackage(packageName)
+                    .putExtra(EXTRA_RADAR_MESSAGE, message)
+            )
         } catch (_: Exception) { }
     }
 
@@ -479,6 +483,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         const val ACTION_STOP = "ru.freenavigator.action.STOP_NAVIGATION"
         const val ACTION_TTS_STATUS = "ru.freenavigator.action.TTS_STATUS"
         const val EXTRA_TTS_READY = "tts_ready"
+        const val ACTION_RADAR_ALERT = "ru.freenavigator.action.RADAR_ALERT"
+        const val EXTRA_RADAR_MESSAGE = "radar_message"
         const val EXTRA_DEST_LAT = "destination_lat"
         const val EXTRA_DEST_LON = "destination_lon"
         const val EXTRA_STEP_LATS = "step_latitudes"
