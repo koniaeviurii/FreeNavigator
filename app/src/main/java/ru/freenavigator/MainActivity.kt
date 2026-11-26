@@ -2239,7 +2239,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val details = if (!error.isNullOrBlank()) "\nОшибка последней загрузки: $error" else if (!lastResult.isNullOrBlank()) "\nПоследний результат: $lastResult" else ""
         AlertDialog.Builder(this)
             .setTitle("База камер")
-            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nЗагрузка использует ваше текущее местоположение и Wi-Fi (не тарифицируемую сеть).")
+            .setMessage("Загружено камер: $count\nПоследнее обновление: $date$details\n\nНачальная база: OpenStreetMap contributors · SpeedCams.world, снимок от 21.09.2026, лицензия ODbL 1.0. Данные могут быть неполными.\n\nОбновление всей базы России загружается через Wi-Fi.")
             .setPositiveButton("Загрузить / обновить") { _, _ ->
                 if (!radarEnabled) {
                     radarEnabled = true
