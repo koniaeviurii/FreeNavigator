@@ -871,66 +871,45 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
      * Each successful cell is merged immediately, so already downloaded data survives
      * a later network/server failure.
      */
+    /**
+     * Queue road and place imports as durable WorkManager work. The task survives
+     * closing the map screen or restarting the app and checkpoints each downloaded cell.
+     */
     private fun downloadTerritoryRoadsAndPlaces(bounds: LatLngBounds, territoryName: String) {
-        statusText.text = "Подготовка дорожных данных и офлайн-поиска…"
-        screenScope.launch {
-            var roadEdges = 0
-            var placeCount = 0
-            var failedRoadCells = 0
-            var failedPlaceCells = 0
-            try {
-                val cells = splitOfflineBounds(bounds, 0.20)
-                withContext(Dispatchers.IO) {
-                    cells.forEachIndexed { index, cell ->
-                        val south = cell.latitudeSouth
-                        val west = cell.longitudeWest
-                        val north = cell.latitudeNorth
-                        val east = cell.longitudeEast
-
-                        // Roads and places are independent datasets: a failure in one
-                        // must never prevent attempting the other for the same cell.
-                        try {
-                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
-                            val roadJson = requestTerritoryOverpass(roadQuery)
-                            val imported = useOfflineRoadGraph { it.mergeFromOverpassJson(roadJson) }
-                            roadEdges += imported
-                        } catch (error: Exception) {
-                            failedRoadCells++
-                            android.util.Log.w("FreeNavigator", "Road data cell ${index + 1}/${cells.size} failed", error)
-                        }
-
-                        try {
-                            val placesQuery = "[out:json][timeout:90];(nwr($south,$west,$north,$east)[name];nwr($south,$west,$north,$east)[addr:housenumber];);out center;"
-                            val placesJson = requestTerritoryOverpass(placesQuery)
-                            placeCount += mergeTerritoryPlaces(placesJson)
-                        } catch (error: Exception) {
-                            failedPlaceCells++
-                            android.util.Log.w("FreeNavigator", "Place data cell ${index + 1}/${cells.size} failed", error)
-                        }
-
-                        val completed = index + 1
-                        statusText.post {
-                            statusText.text = "${territoryName}: ${completed}/${cells.size} участков · дорог $roadEdges · мест $placeCount"
-                        }
-                        // A small delay between requests respects public Overpass capacity.
-                        Thread.sleep(1100)
-                    }
-                }
-                val allFailures = failedRoadCells + failedPlaceCells
-                val resultText = when {
-                    allFailures == 0 -> "Офлайн-данные ${territoryName} загружены"
-                    failedRoadCells == cells.size && failedPlaceCells == cells.size ->
-                        "Не удалось загрузить офлайн-данные ${territoryName}"
-                    else -> "Офлайн-данные ${territoryName} загружены частично"
-                }
-                statusText.text = resultText
-                val retryHint = if (allFailures > 0) " Повторите загрузку, чтобы попробовать получить пропущенные участки." else ""
-                toast("${resultText}. Дорожных сегментов: $roadEdges; объектов поиска: $placeCount; ошибок дорог: $failedRoadCells; ошибок мест: $failedPlaceCells.$retryHint")
-            } catch (error: Exception) {
-                statusText.text = "Загрузка офлайн-данных прервана"
-                toast("Загрузка ${territoryName} прервана: ${error.message ?: "ошибка сети"}. Уже сохранённые участки останутся в телефоне.")
-            }
-        }
+        val progressKey = listOf(
+            territoryName,
+            bounds.latitudeSouth, bounds.latitudeNorth,
+            bounds.longitudeWest, bounds.longitudeEast
+        ).joinToString("|").hashCode().toUInt().toString(16)
+        val request = OneTimeWorkRequestBuilder<OfflineTerritoryDataWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .setInputData(
+                workDataOf(
+                    OfflineTerritoryDataWorker.KEY_NAME to territoryName,
+                    OfflineTerritoryDataWorker.KEY_SOUTH to bounds.latitudeSouth,
+                    OfflineTerritoryDataWorker.KEY_NORTH to bounds.latitudeNorth,
+                    OfflineTerritoryDataWorker.KEY_WEST to bounds.longitudeWest,
+                    OfflineTerritoryDataWorker.KEY_EAST to bounds.longitudeEast,
+                    OfflineTerritoryDataWorker.KEY_PROGRESS to progressKey
+                )
+            )
+            .setBackoffCriteria(
+                androidx.work.BackoffPolicy.EXPONENTIAL,
+                30,
+                TimeUnit.SECONDS
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "freenavigator-territory-$progressKey",
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        statusText.text = "Загрузка дорог и объектов поиска выполняется в фоне"
+        toast("Данные дорог и поиска для $territoryName добавлены в фоновую очередь. Загрузка продолжится, даже если закрыть карту.")
     }
 
     private fun requestTerritoryOverpass(query: String): String {
