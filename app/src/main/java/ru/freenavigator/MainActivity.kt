@@ -865,10 +865,130 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .show()
     }
 
+    /**
+     * Downloads road geometry and searchable OSM objects for the exact selected
+     * administrative boundary. Small sequential cells keep Overpass requests bounded.
+     * Each successful cell is merged immediately, so already downloaded data survives
+     * a later network/server failure.
+     */
+    private fun downloadTerritoryRoadsAndPlaces(bounds: LatLngBounds, territoryName: String) {
+        statusText.text = "Подготовка дорожных данных и офлайн-поиска…"
+        screenScope.launch {
+            var roadSegments = 0
+            var placeCount = 0
+            var failedCells = 0
+            try {
+                val cells = splitOfflineBounds(bounds, 0.20)
+                withContext(Dispatchers.IO) {
+                    cells.forEachIndexed { index, cell ->
+                        val south = cell.latitudeSouth
+                        val west = cell.longitudeWest
+                        val north = cell.latitudeNorth
+                        val east = cell.longitudeEast
+                        try {
+                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
+                            val roadJson = requestTerritoryOverpass(roadQuery)
+                            val importedRoads = runCatching {
+                                useOfflineRoadGraph { it.mergeFromOverpassJson(roadJson) }
+                            }.getOrDefault(0)
+                            roadSegments += importedRoads
+
+                            val placesQuery = "[out:json][timeout:90];(nwr($south,$west,$north,$east)[name];nwr($south,$west,$north,$east)[addr:housenumber];);out center;"
+                            val placesJson = requestTerritoryOverpass(placesQuery)
+                            placeCount += mergeTerritoryPlaces(placesJson)
+                        } catch (error: Exception) {
+                            failedCells++
+                            android.util.Log.w("FreeNavigator", "Offline territory cell ${index + 1}/${cells.size} failed", error)
+                        }
+                        val completed = index + 1
+                        statusText.post {
+                            statusText.text = "${territoryName}: данные ${completed}/${cells.size} участков · дорог $roadSegments · мест $placeCount"
+                        }
+                        // Be courteous to public Overpass instances.
+                        Thread.sleep(1100)
+                    }
+                }
+                statusText.text = "Офлайн-данные ${territoryName} загружены частично или полностью"
+                toast("Загрузка данных ${territoryName} завершена. Дорожных сегментов добавлено: $roadSegments; объектов поиска: $placeCount; участков с ошибками: $failedCells.")
+            } catch (error: Exception) {
+                statusText.text = "Загрузка офлайн-данных прервана"
+                toast("Не удалось завершить загрузку ${territoryName}: ${error.message ?: "ошибка сети"}. Уже сохранённые участки останутся в телефоне.")
+            }
+        }
+    }
+
+    private fun requestTerritoryOverpass(query: String): String {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val endpoints = listOf(
+            "https://overpass-api.de/api/interpreter?data=",
+            "https://overpass.kumi.systems/api/interpreter?data="
+        )
+        var lastError: Exception? = null
+        for (endpoint in endpoints) {
+            try {
+                return httpGetLong(endpoint + encoded)
+            } catch (error: Exception) {
+                lastError = error
+            }
+        }
+        throw lastError ?: IllegalStateException("Серверы OpenStreetMap недоступны")
+    }
+
+    private fun mergeTerritoryPlaces(response: String): Int {
+        val elements = JSONObject(response).optJSONArray("elements")
+            ?: throw IllegalStateException("Сервер не вернул список объектов")
+        val features = org.json.JSONArray()
+        val categories = setOf(
+            "amenity", "shop", "tourism", "leisure", "historic", "railway",
+            "healthcare", "emergency", "office", "craft", "natural", "public_transport"
+        )
+        for (i in 0 until elements.length()) {
+            val item = elements.optJSONObject(i) ?: continue
+            val tags = item.optJSONObject("tags") ?: continue
+            val addressLabel = listOf(tags.optString("addr:street"), tags.optString("addr:housenumber"))
+                .map { it.trim() }
+                .filter { it.isNotBlank() && it != "null" }
+                .joinToString(" ")
+            val name = sequenceOf("name:ru", "name", "official_name", "brand")
+                .map { tags.optString(it).trim() }
+                .firstOrNull { it.isNotBlank() && it != "null" }
+                ?: addressLabel.takeIf { it.isNotBlank() }
+                ?: continue
+            val categoryKey = categories.firstOrNull { tags.has(it) }
+                ?: if (tags.has("addr:housenumber")) "address" else continue
+            val centerPoint = item.optJSONObject("center")
+            val lat = if (item.has("lat")) item.optDouble("lat", Double.NaN)
+                else centerPoint?.optDouble("lat", Double.NaN) ?: Double.NaN
+            val lon = if (item.has("lon")) item.optDouble("lon", Double.NaN)
+                else centerPoint?.optDouble("lon", Double.NaN) ?: Double.NaN
+            if (!lat.isFinite() || !lon.isFinite()) continue
+            features.put(JSONObject().apply {
+                put("type", "Feature")
+                put("id", item.optString("type") + "/" + item.optString("id"))
+                put("geometry", JSONObject().apply {
+                    put("type", "Point")
+                    put("coordinates", org.json.JSONArray().put(lon).put(lat))
+                })
+                put("properties", JSONObject().apply {
+                    put("osm_id", item.optString("type") + "/" + item.optString("id"))
+                    put("name", name)
+                    put("name:ru", tags.optString("name:ru", name))
+                    put("category", if (categoryKey == "address") "address" else categoryKey + ":" + tags.optString(categoryKey))
+                    put("city", tags.optString("addr:city", tags.optString("addr:suburb", "")))
+                })
+            })
+        }
+        if (features.length() == 0) return 0
+        val geoJson = JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+        return java.io.ByteArrayInputStream(geoJson.toByteArray(Charsets.UTF_8)).use {
+            OfflinePlaceIndex(this).mergeFromGeoJson(it)
+        }
+    }
+
     private fun httpGetLong(address: String): String {
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20000
-            readTimeout = 60000
+            readTimeout = 120000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android offline road graph)")
             setRequestProperty("Accept", "application/json")
@@ -1027,25 +1147,27 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             toast("Не удалось определить границы территории")
             return
         }
-        // Split a selected city/region into manageable offline map packages.
+        val mapChunks = splitOfflineBounds(bounds, 0.35)
         val minZoom = 5
         val maxZoom = 14
-        val chunks = splitOfflineBounds(bounds, 0.35)
-        val estimates = chunks.map { estimateOfflineTileCount(it, minZoom, maxZoom) }
+        val estimates = mapChunks.map { estimateOfflineTileCount(it, minZoom, maxZoom) }
         val totalTiles = estimates.sum()
         AlertDialog.Builder(this)
             .setTitle("Сохранить ${territory.label}?")
-            .setMessage("Территория будет разбита на ${chunks.size} участков.\\nОценка общего объёма: $totalTiles плиток.\\nЗагрузка частей позволит сохранить большую область, не превышая лимит одной загрузки.")
-            .setPositiveButton("Скачать") { _, _ ->
+            .setMessage("Будет загружен полный офлайн-комплект территории:\n• карта — ${mapChunks.size} частей, около $totalTiles плиток;\n• автомобильные дороги для офлайн-маршрутов;\n• адреса и объекты для офлайн-поиска.\n\nДорожные данные и места будут загружаться небольшими участками. Это может занять продолжительное время.")
+            .setPositiveButton("Скачать всё") { _, _ ->
                 var started = 0
-                chunks.forEachIndexed { index, chunk ->
+                mapChunks.forEachIndexed { index, chunk ->
                     val count = estimates[index]
                     if (count in 1..15000L) {
                         startOfflineRegionDownload(chunk, "${territory.label} · часть ${index + 1}", count, minZoom.toDouble(), maxZoom.toDouble())
                         started++
+                    } else {
+                        toast("Часть карты ${index + 1} пропущена: превышен лимит плиток")
                     }
                 }
-                toast("Запущено частей карты: $started из ${chunks.size}")
+                toast("Запущена загрузка карты: $started частей")
+                downloadTerritoryRoadsAndPlaces(bounds, territory.label)
             }
             .setNegativeButton("Отмена", null)
             .show()
