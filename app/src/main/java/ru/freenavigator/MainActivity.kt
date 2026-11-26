@@ -748,16 +748,122 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun showOfflineMapsDialog() {
-        val options = arrayOf("Скачать текущую область карты", "Мои офлайн-карты", "Закрыть")
+        val options = arrayOf("Выбрать страну, регион или город", "Скачать текущую область карты", "Мои офлайн-карты", "Закрыть")
         AlertDialog.Builder(this)
             .setTitle("Офлайн-карты")
             .setItems(options) { dialog, which ->
                 when (which) {
-                    0 -> confirmCurrentAreaDownload()
-                    1 -> showOfflineRegionList()
+                    0 -> promptOfflineTerritorySearch()
+                    1 -> confirmCurrentAreaDownload()
+                    2 -> showOfflineRegionList()
                     else -> dialog.dismiss()
                 }
             }
+            .show()
+    }
+
+    private fun promptOfflineTerritorySearch() {
+        val field = EditText(this).apply {
+            hint = "Например: Московская область, Казань"
+            setSingleLine(true)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Что сохранить для офлайн-режима?")
+            .setMessage("Поиск по России: страна, республика, край, область, район или город.")
+            .setView(field)
+            .setPositiveButton("Найти") { _, _ ->
+                val query = field.text.toString().trim()
+                if (query.length < 2) {
+                    toast("Введите название территории")
+                } else {
+                    searchOfflineTerritories(query)
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun searchOfflineTerritories(query: String) {
+        statusText.text = "Ищем территорию: $query…"
+        screenScope.launch {
+            try {
+                val matches = withContext(Dispatchers.IO) {
+                    val encoded = URLEncoder.encode(query, "UTF-8")
+                    val body = httpGet("https://nominatim.openstreetmap.org/search?q=$encoded&format=jsonv2&addressdetails=1&limit=8&countrycodes=ru&accept-language=ru")
+                    val array = org.json.JSONArray(body)
+                    (0 until array.length()).mapNotNull { index ->
+                        val item = array.optJSONObject(index) ?: return@mapNotNull null
+                        val box = item.optJSONArray("boundingbox") ?: return@mapNotNull null
+                        if (box.length() < 4) return@mapNotNull null
+                        val south = box.optString(0).toDoubleOrNull() ?: return@mapNotNull null
+                        val north = box.optString(1).toDoubleOrNull() ?: return@mapNotNull null
+                        val west = box.optString(2).toDoubleOrNull() ?: return@mapNotNull null
+                        val east = box.optString(3).toDoubleOrNull() ?: return@mapNotNull null
+                        if (south >= north || west >= east) return@mapNotNull null
+                        val fullName = item.optString("display_name")
+                        val shortName = fullName.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                            .take(3).joinToString(", ")
+                        val kind = item.optString("type").takeIf { it.isNotBlank() && it != "null" }
+                        val label = listOfNotNull(shortName, kind).distinct().joinToString(" · ")
+                        OfflineTerritory(label, fullName, south, north, west, east)
+                    }
+                }
+                if (matches.isEmpty()) {
+                    toast("В России ничего не найдено. Уточните название.")
+                } else {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Выберите территорию")
+                        .setItems(matches.map { it.label }.toTypedArray()) { _, index ->
+                            confirmTerritoryDownload(matches[index])
+                        }
+                        .setNegativeButton("Отмена", null)
+                        .show()
+                }
+            } catch (error: Exception) {
+                toast("Не удалось найти территорию: проверьте интернет")
+            }
+        }
+    }
+
+    private data class OfflineTerritory(
+        val label: String,
+        val fullName: String,
+        val south: Double,
+        val north: Double,
+        val west: Double,
+        val east: Double
+    )
+
+    private fun confirmTerritoryDownload(territory: OfflineTerritory) {
+        val bounds = try {
+            LatLngBounds.Builder()
+                .include(LatLng(territory.south, territory.west))
+                .include(LatLng(territory.north, territory.east))
+                .build()
+        } catch (_: Exception) {
+            toast("Не удалось определить границы территории")
+            return
+        }
+        var maxZoom = 14
+        var estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
+        while (estimate > 2500L && maxZoom > 5) {
+            maxZoom--
+            estimate = estimateOfflineTileCount(bounds, 5, maxZoom)
+        }
+        if (estimate <= 0L || estimate > 2500L) {
+            infoDialog("Территория слишком большая", "Даже при обзорном масштабе она превышает лимит одной загрузки. Выберите отдельную область или город.")
+            return
+        }
+        val minZoom = 5
+        val estimatedMb = estimate * 12L / 1024L
+        AlertDialog.Builder(this)
+            .setTitle("Сохранить ${territory.label}?")
+            .setMessage("Будет загружена территория из России с масштабами $minZoom–$maxZoom.\n\nРасчётно: $estimate плиток, около $estimatedMb МБ. Для больших областей приложение автоматически уменьшает максимальное увеличение, чтобы уложиться в лимит одной загрузки.")
+            .setPositiveButton("Скачать") { _, _ ->
+                startOfflineRegionDownload(bounds, territory.label, estimate, minZoom.toDouble(), maxZoom.toDouble())
+            }
+            .setNegativeButton("Отмена", null)
             .show()
     }
 
@@ -809,10 +915,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         return total
     }
 
-    private fun startOfflineRegionDownload(bounds: LatLngBounds, name: String, estimatedTiles: Long) {
+    private fun startOfflineRegionDownload(bounds: LatLngBounds, name: String, estimatedTiles: Long, minZoom: Double = 8.0, maxZoom: Double = 14.0) {
         val styleUrl = if (darkTheme) DARK_STYLE else LIGHT_STYLE
         val definition = OfflineTilePyramidRegionDefinition(
-            styleUrl, bounds, 8.0, 14.0, resources.displayMetrics.density, true
+            styleUrl, bounds, minZoom, maxZoom, resources.displayMetrics.density, true
         )
         val metadata = JSONObject().apply {
             put("name", name)
