@@ -92,8 +92,8 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 })
             }
 
-            // Keep previously downloaded areas. A valid empty response is still a successful
-            // update, but it must never erase cameras already stored from earlier journeys.
+            // Keep previously downloaded areas. An empty first response is not a usable
+            // initial database: leave the update timestamp untouched so WorkManager retries.
             val merged = linkedMapOf<String, JSONObject>()
             val previousRaw = prefs.getString("radar_cache", null)
             if (!previousRaw.isNullOrBlank()) {
@@ -105,6 +105,9 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                         if (id.isNotBlank()) merged[id] = camera
                     }
                 } catch (_: Exception) { }
+            }
+            if (normalized.length() == 0 && merged.isEmpty()) {
+                return fail("Сервер не нашёл камер в этой области. Повторим загрузку позже")
             }
             for (i in 0 until normalized.length()) {
                 val camera = normalized.optJSONObject(i) ?: continue
@@ -119,7 +122,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 .putFloat("radar_center_lat", lat.toFloat())
                 .putFloat("radar_center_lon", lon.toFloat())
                 .remove("radar_last_error")
-                .putString("radar_last_result", "Получено камер: ${normalized.length()}")
+                .putString("radar_last_result", if (normalized.length() == 0) "Новых камер не найдено; сохранена ранее загруженная база" else "Получено камер: ${normalized.length()}")
                 .apply()
             Result.success()
         } catch (e: Exception) {

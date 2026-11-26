@@ -1663,8 +1663,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             putExtra(NavigationForegroundService.EXTRA_INSTRUCTIONS, route.steps.map { it.instruction }.toTypedArray())
         }
         try {
+            // The service reports true only after Russian TTS has initialized.
+            // Do not suppress the Activity's voice fallback merely because the service started.
+            foregroundGuidanceStarted = false
             ContextCompat.startForegroundService(this, intent)
-            foregroundGuidanceStarted = true
         } catch (e: Exception) {
             foregroundGuidanceStarted = false
             toast("Не удалось включить фоновое ведение: ${e.message ?: "ошибка службы"}")
