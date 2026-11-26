@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
     private var speechReady = false
     private var arrivalAnnounced = false
     private var radarLocationListener: LocationListener? = null
-    private val announcedRadarIds = mutableSetOf<String>()
+    private val radarWarningStages = mutableMapOf<String, Int>()
     private var lastNavigationLocation: Location? = null
     private var pendingNavigation: RouteData? = null
     private var rerouteInProgress = false
@@ -567,7 +567,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.11"
+            text = "FreeNavigator · версия 0.5.17"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -2030,56 +2030,62 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun checkRadarProximity(location: Location) {
-        if (foregroundGuidanceStarted || !radarEnabled || !speechReady) return
+        // Camera warnings are notification-based and must not depend on TTS readiness.
+        if (foregroundGuidanceStarted || !radarEnabled) return
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
         val raw = prefs.getString("radar_cache", null) ?: return
         try {
             val cameras = org.json.JSONArray(raw)
-            var nearestId: String? = null
-            var nearestDistance = 800.0
-            var nearestBackward = false
+            data class RadarAlert(val id: String, val distance: Double, val rearDirection: Boolean, val stage: Int)
+            val eligible = mutableListOf<RadarAlert>()
             for (i in 0 until cameras.length()) {
                 val camera = cameras.optJSONObject(i) ?: continue
                 val id = camera.optString("id")
-                if (id.isBlank() || id in announcedRadarIds) continue
-                // Match the foreground service: only suppress a camera when its
-                // numeric compass direction clearly faces away from reliable GPS course.
+                if (id.isBlank()) continue
+                val distance = distanceBetween(
+                    location.latitude, location.longitude,
+                    camera.optDouble("lat"), camera.optDouble("lon")
+                )
+                if (distance > 2500.0) {
+                    radarWarningStages.remove(id)
+                    continue
+                }
+                // Suppress only cameras whose mapped direction clearly faces away
+                // from the vehicle's reliable GPS course.
                 val cameraDirection = camera.optString("direction").toDoubleOrNull()
                     ?.takeIf { it.isFinite() && it in 0.0..360.0 }
                 if (cameraDirection != null && location.hasBearing() && location.speed >= 3.0f) {
-                    // OSM direction is the direction the camera faces, generally
-                    // opposite to the heading of vehicles approaching it.
                     val approachHeading = (cameraDirection + 180.0) % 360.0
                     val angleDifference = kotlin.math.abs(((location.bearing - approachHeading + 540f) % 360f) - 180f)
                     if (angleDifference > 75f) continue
                 }
-                val distance = distanceBetween(location.latitude, location.longitude, camera.optDouble("lat"), camera.optDouble("lon"))
-                if (distance < nearestDistance) {
-                    nearestDistance = distance
-                    nearestId = id
-                    nearestBackward = camera.optString("direction_backward").isNotBlank()
+                val currentStage = radarWarningStages[id] ?: 0
+                val nextStage = when {
+                    currentStage == 0 && distance <= 60.0 -> 3
+                    currentStage == 0 && distance <= 300.0 -> 2
+                    currentStage == 0 && distance <= 800.0 -> 1
+                    currentStage == 1 && distance <= 60.0 -> 3
+                    currentStage == 1 && distance <= 300.0 -> 2
+                    currentStage == 2 && distance <= 60.0 -> 3
+                    else -> 0
+                }
+                if (nextStage > currentStage) {
+                    eligible.add(RadarAlert(
+                        id, distance,
+                        camera.optString("direction_backward").isNotBlank(),
+                        nextStage
+                    ))
                 }
             }
-            if (nearestId != null) {
-                showRadarNotification(nearestDistance, nearestBackward)
-                announcedRadarIds.add(nearestId)
+            val selected = eligible.minByOrNull { it.distance }
+            if (selected != null) {
+                radarWarningStages[selected.id] = selected.stage
+                showRadarNotification(selected.distance, selected.rearDirection, selected.stage)
             }
-            // Allow a fresh warning after the vehicle has moved well away and returned.
-            val removeIds = mutableListOf<String>()
-            for (id in announcedRadarIds) {
-                for (i in 0 until cameras.length()) {
-                    val camera = cameras.optJSONObject(i) ?: continue
-                    if (camera.optString("id") == id) {
-                        if (distanceBetween(location.latitude, location.longitude, camera.optDouble("lat"), camera.optDouble("lon")) > 2500.0) removeIds.add(id)
-                        break
-                    }
-                }
-            }
-            announcedRadarIds.removeAll(removeIds.toSet())
         } catch (_: Exception) {}
     }
 
-    private fun showRadarNotification(distanceMeters: Double, rearDirection: Boolean) {
+    private fun showRadarNotification(distanceMeters: Double, rearDirection: Boolean, stage: Int) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "radar_alerts"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -2117,7 +2123,12 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .build()
         if (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            manager.notify(2002, notification)
+            // A new notification ID for each distance stage makes every approach
+            // warning audible; remove the previous stage to avoid stale banners.
+            manager.cancel(2002)
+            manager.cancel(2003)
+            manager.cancel(2004)
+            manager.notify(2001 + stage, notification)
         }
     }
 
