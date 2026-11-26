@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.content.pm.PackageManager
@@ -112,6 +114,8 @@ class MainActivity : AppCompatActivity() {
     private var searchExpanded = false
     private var radarPopupText: TextView? = null
     private val radarPopupHandler = Handler(Looper.getMainLooper())
+    private val radarSoundHandler = Handler(Looper.getMainLooper())
+    private var radarToneGenerator: ToneGenerator? = null
     private val hideRadarPopup = Runnable { radarPopupText?.visibility = View.GONE }
     private var radarEnabled = true
     private var locationSource: GeoJsonSource? = null
@@ -747,7 +751,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                 screenScope.launch {
                     try {
                         val count = withContext(Dispatchers.IO) {
-                            val query = "[out:json][timeout:60];nwr(around:10000,${center.latitude},${center.longitude})[name];out center;"
+                            val query = "[out:json][timeout:60];(nwr(around:10000,${center.latitude},${center.longitude})[name];nwr(around:10000,${center.latitude},${center.longitude})[addr:housenumber];);out center;"
                             val encoded = URLEncoder.encode(query, "UTF-8")
                             val endpoints = listOf(
                                 "https://overpass-api.de/api/interpreter?data=",
@@ -767,10 +771,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                             for (i in 0 until elements.length()) {
                                 val item = elements.optJSONObject(i) ?: continue
                                 val tags = item.optJSONObject("tags") ?: continue
+                                val addressLabel = listOf(tags.optString("addr:street"), tags.optString("addr:housenumber"))
+                                    .map { it.trim() }.filter { it.isNotBlank() && it != "null" }.joinToString(" ")
                                 val name = sequenceOf("name:ru", "name", "official_name", "brand")
                                     .map { tags.optString(it).trim() }
-                                    .firstOrNull { it.isNotBlank() && it != "null" } ?: continue
-                                val categoryKey = categories.firstOrNull { tags.has(it) } ?: continue
+                                    .firstOrNull { it.isNotBlank() && it != "null" }
+                                    ?: addressLabel.takeIf { it.isNotBlank() } ?: continue
+                                val categoryKey = categories.firstOrNull { tags.has(it) }
+                                    ?: if (tags.has("addr:housenumber")) "address" else continue
                                 val centerPoint = item.optJSONObject("center")
                                 val lat = if (item.has("lat")) item.optDouble("lat", Double.NaN) else centerPoint?.optDouble("lat", Double.NaN) ?: Double.NaN
                                 val lon = if (item.has("lon")) item.optDouble("lon", Double.NaN) else centerPoint?.optDouble("lon", Double.NaN) ?: Double.NaN
@@ -786,7 +794,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                                         put("osm_id", item.optString("type") + "/" + item.optString("id"))
                                         put("name", name)
                                         put("name:ru", tags.optString("name:ru", name))
-                                        put("category", categoryKey + ":" + tags.optString(categoryKey))
+                                        put("category", if (categoryKey == "address") "address" else categoryKey + ":" + tags.optString(categoryKey))
                                         put("city", tags.optString("addr:city", tags.optString("addr:suburb", "")))
                                     })
                                 })
@@ -2412,6 +2420,22 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
     }
 
+    private fun playRadarTone(stage: Int) {
+        try {
+            radarSoundHandler.removeCallbacksAndMessages(null)
+            val tone = radarToneGenerator ?: ToneGenerator(AudioManager.STREAM_ALARM, 90).also {
+                radarToneGenerator = it
+            }
+            val count = when (stage) { 1 -> 1; 2 -> 2; else -> 3 }
+            val interval = when (stage) { 1 -> 700L; 2 -> 350L; else -> 180L }
+            repeat(count) { index ->
+                radarSoundHandler.postDelayed({
+                    try { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 130) } catch (_: Exception) { }
+                }, index * interval)
+            }
+        } catch (_: Exception) { }
+    }
+
     private fun showRadarNotification(distanceMeters: Double, rearDirection: Boolean, stage: Int) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "radar_alerts"
@@ -2439,6 +2463,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         val directionText = if (rearDirection) " · контроль в спину" else ""
         showRadarPopup("$distanceText$directionText")
+        playRadarTone(stage)
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Камера контроля скорости")
@@ -2447,7 +2472,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .build()
         if (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
@@ -2484,6 +2509,9 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         try { unregisterReceiver(guidanceStatusReceiver) } catch (_: Exception) { }
         try { unregisterReceiver(radarAlertReceiver) } catch (_: Exception) { }
         radarPopupHandler.removeCallbacksAndMessages(null)
+        radarSoundHandler.removeCallbacksAndMessages(null)
+        try { radarToneGenerator?.release() } catch (_: Exception) { }
+        radarToneGenerator = null
         speech?.stop(); speech?.shutdown(); screenScope.cancel(); mapView.onDestroy(); super.onDestroy()
     }
 

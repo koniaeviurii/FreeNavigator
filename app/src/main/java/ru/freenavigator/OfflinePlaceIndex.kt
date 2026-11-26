@@ -64,7 +64,7 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
             if (!lat.isFinite() || lat !in -90.0..90.0 ||
                 !lon.isFinite() || lon !in -180.0..180.0) continue
             val properties = feature.optJSONObject("properties") ?: JSONObject()
-            val name = firstValue(properties, "name:ru", "name", "official_name", "brand")
+            val name = firstValue(properties, "name:ru", "name", "official_name", "brand", "address")
                 ?: continue
             val category = firstValue(
                 properties, "category", "type", "amenity", "shop", "tourism",
