@@ -251,10 +251,12 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                         }
                         RadarEvent(id, distance, stage, direction != null)
                     }
-                    currentStage == 1 && distance <= 300.0 ->
-                        RadarEvent(id, distance, 2, direction != null)
+                    // Check the closest band first: a GPS jump directly from
+                    // beyond 300 m to within 60 m must trigger the final warning.
                     currentStage == 1 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, direction != null)
+                    currentStage == 1 && distance <= 300.0 ->
+                        RadarEvent(id, distance, 2, direction != null)
                     currentStage == 2 && distance <= 60.0 ->
                         RadarEvent(id, distance, 3, direction != null)
                     else -> null
