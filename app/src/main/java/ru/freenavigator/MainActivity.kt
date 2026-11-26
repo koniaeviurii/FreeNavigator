@@ -890,7 +890,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                         // Roads and places are independent datasets: a failure in one
                         // must never prevent attempting the other for the same cell.
                         try {
-                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\\"];out geom;"
+                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
                             val roadJson = requestTerritoryOverpass(roadQuery)
                             val imported = useOfflineRoadGraph { it.mergeFromOverpassJson(roadJson) }
                             roadEdges += imported
