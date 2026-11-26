@@ -29,7 +29,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         }
     }
 
-    override suspend fun doWork() {
+    override suspend fun doWork(): Result {
         val prefs = applicationContext.getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
         fun fail(reason: String): Result {
             prefs.edit().putString("radar_last_error", reason).apply()
