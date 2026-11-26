@@ -163,6 +163,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) toast("Без разрешения уведомлений предупреждения о камерах могут не появляться поверх других приложений")
+    }
+
     private val offlineIndexPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -186,6 +192,10 @@ class MainActivity : AppCompatActivity() {
         MapLibre.getInstance(this)
         configureMapNetworking()
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
         // Clear obsolete optional traffic settings; live traffic is postponed.
