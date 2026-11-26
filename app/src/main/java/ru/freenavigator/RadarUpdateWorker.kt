@@ -41,11 +41,6 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
             !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return fail("Интернет недоступен")
 
-        val lat = inputData.getDouble("center_lat", prefs.getFloat("radar_center_lat", 0f).toDouble())
-        val lon = inputData.getDouble("center_lon", prefs.getFloat("radar_center_lon", 0f).toDouble())
-        if (!lat.isFinite() || !lon.isFinite() || (lat == 0.0 && lon == 0.0) || lat !in -90.0..90.0 || lon !in -180.0..180.0)
-            return fail("Не получены корректные координаты GPS")
-
         // Prefer a complete country snapshot over a GPS-centred fragment. The CSV is
         // bundled in the APK and refreshed from its public source on explicit/daily updates.
         val national = try { downloadNationalDatabase() } catch (error: Exception) {
@@ -62,6 +57,11 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 .apply()
             return Result.success()
         }
+
+        val lat = inputData.getDouble("center_lat", prefs.getFloat("radar_center_lat", 0f).toDouble())
+        val lon = inputData.getDouble("center_lon", prefs.getFloat("radar_center_lon", 0f).toDouble())
+        if (!lat.isFinite() || !lon.isFinite() || (lat == 0.0 && lon == 0.0) || lat !in -90.0..90.0 || lon !in -180.0..180.0)
+            return fail("Национальная база недоступна, GPS-координаты для резервной загрузки не получены")
 
         // Fallback: if the national download is temporarily unavailable, refresh
         // the 30 km area around the current location without discarding the cache.

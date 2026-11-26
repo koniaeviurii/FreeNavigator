@@ -2246,13 +2246,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                     startRadarMonitoring()
                 }
                 val loc = currentDeviceLocation()
-                if (loc != null) {
-                    enqueueRadarRefresh(loc.latitude, loc.longitude, true)
-                    toast("Загрузка базы камер начата")
-                } else {
-                    toast("Ожидаем GPS для загрузки базы камер")
-                    requestRadarLocationAndDownload()
-                }
+                // The national Russia snapshot does not need a GPS fix; coordinates
+                // are used only if the remote national source is temporarily unavailable.
+                enqueueRadarRefresh(loc?.latitude ?: 0.0, loc?.longitude ?: 0.0, true)
+                toast("Загрузка всей базы камер России начата через Wi-Fi")
             }
             .setNegativeButton(if (radarEnabled) "Выключить антирадар" else "Включить антирадар") { _, _ ->
                 radarEnabled = !radarEnabled
