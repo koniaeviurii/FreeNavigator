@@ -455,7 +455,7 @@ class MainActivity : AppCompatActivity() {
         timesRow.addView(routeArrivalTime, LinearLayout.LayoutParams(0, -2, 1f))
         navPanel.addView(timesRow)
         routeRemainingText = TextView(this).apply {
-            text = "До конца маршрута: — км"
+            text = "До конца маршрута: — км."
             textSize = 13f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(0xFF173B5E.toInt())
@@ -607,7 +607,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.22"
+            text = "FreeNavigator · версия 0.6.0"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -1603,9 +1603,9 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         startForegroundGuidance(route)
         routeProgress?.progress = 0
         val startLabel = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(navigationStartedAt))
-        routeStartTime?.text = "Начало $startLabel"
-        routeArrivalTime?.text = "Прибытие —:—"
-        routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", distanceMeters / 1000.0)} км"
+        routeStartTime?.text = startLabel
+        routeArrivalTime?.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(navigationStartedAt + durationSeconds * 1000L))
+        routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", distanceMeters / 1000.0)} км."
         speak("Маршрут начат")
         navigationPanel?.visibility = View.VISIBLE
         maneuverHud?.visibility = View.VISIBLE
@@ -1679,11 +1679,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         if (System.currentTimeMillis() - location.time > 15000L) return
         val previousFix = lastAcceptedFix
         if (previousFix != null) {
-            val deltaSeconds = ((location.time - lastAcceptedFixTime).coerceAtLeast(0L)) / 1000.0
-            if (deltaSeconds > 0.0) {
-                val jumpMeters = distanceBetween(previousFix.latitude, previousFix.longitude, location.latitude, location.longitude)
-                if (jumpMeters > (deltaSeconds * 65.0 + 120.0)) return
-            }
+            // Ignore duplicate/out-of-order fixes from multiple Android providers.
+            if (location.time <= lastAcceptedFixTime) return
+            val deltaSeconds = (location.time - lastAcceptedFixTime) / 1000.0
+            val jumpMeters = distanceBetween(previousFix.latitude, previousFix.longitude, location.latitude, location.longitude)
+            val previousAccuracy = if (previousFix.hasAccuracy()) previousFix.accuracy.coerceAtMost(35f) else 25f
+            val currentAccuracy = if (location.hasAccuracy()) location.accuracy.coerceAtMost(35f) else 25f
+            val plausibleMeters = (deltaSeconds * 55.0).coerceAtLeast(25.0) + previousAccuracy + currentAccuracy
+            if (jumpMeters > plausibleMeters) return
         }
         lastAcceptedFix = Location(location)
         lastAcceptedFixTime = location.time
@@ -1691,8 +1694,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val projection = nearestRouteProjection(location.latitude, location.longitude)
         currentRouteIndex = projection.segmentIndex
         maybeReroute(location, projection.distanceMeters)
-        val style = map?.style ?: return
-        addNavigationMarker(style, location)
+        map?.style?.let { addNavigationMarker(it, location) }
         announceNextManeuver(location)
         var remaining = distanceBetween(location.latitude, location.longitude, projection.point.latitude(), projection.point.longitude())
         val segmentEnd = navigationPoints[projection.segmentIndex + 1]
@@ -1708,18 +1710,27 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         routeProgress?.progress = ((1.0 - fraction) * 1000).toInt().coerceIn(0, 1000)
         val minutes = (navigationDurationSeconds * fraction / 60.0).toInt().coerceAtLeast(1)
         navigationInfo?.text = "В пути · около $minutes мин"
-        routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", (remaining / 1000.0).coerceAtLeast(0.0))} км"
+        routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", (remaining / 1000.0).coerceAtLeast(0.0))} км."
         val arrival = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(System.currentTimeMillis() + minutes * 60_000L))
-        routeArrivalTime?.text = "Прибытие $arrival"
+        routeArrivalTime?.text = arrival
         val bearing = if (location.hasBearing() && location.speed > 0.5f) location.bearing.toDouble()
             else lastNavigationLocation?.let { it.bearingTo(location).toDouble() } ?: map?.cameraPosition?.bearing ?: 0.0
+        val bottomPadding = (navigationPanel?.height?.takeIf { it > 0 } ?: dp(116)) + dp(28)
         map?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
-            CameraPosition.Builder().target(LatLng(location.latitude, location.longitude)).zoom(17.0).bearing(bearing).tilt(45.0).build()
+            CameraPosition.Builder()
+                .target(LatLng(location.latitude, location.longitude))
+                .zoom(17.0)
+                .bearing(bearing)
+                .tilt(45.0)
+                // Shift the map's logical center above the bottom route panel so
+                // the live vehicle arrow remains visible in the usable map area.
+                .padding(0.0, 0.0, 0.0, bottomPadding.toDouble())
+                .build()
         ))
         lastNavigationLocation = Location(location)
         if (remaining < 25.0) {
             navigationInfo?.text = "Вы прибыли к месту назначения"
-            routeRemainingText?.text = "До конца маршрута: 0,0 км"
+            routeRemainingText?.text = "До конца маршрута: 0,0 км."
             if (!foregroundGuidanceStarted && !arrivalAnnounced) { speak("Вы прибыли к месту назначения"); arrivalAnnounced = true }
         }
     }
@@ -1898,6 +1909,17 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         } catch (_: Exception) {}
         navigationLocationListener = null
         navigationPanel?.visibility = View.GONE
+        map?.cameraPosition?.let { current ->
+            map?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(current.target)
+                    .zoom(current.zoom)
+                    .bearing(current.bearing)
+                    .tilt(current.tilt)
+                    .padding(0.0, 0.0, 0.0, 0.0)
+                    .build()
+            ))
+        }
         maneuverHud?.visibility = View.GONE
         bottomControlsView?.visibility = View.VISIBLE
         map?.style?.let { style ->
