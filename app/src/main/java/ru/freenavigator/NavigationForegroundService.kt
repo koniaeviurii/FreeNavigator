@@ -140,8 +140,14 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onLocationChanged(location: Location) {
         if (arrived || !destinationLat.isFinite()) return
-        if (location.hasAccuracy() && location.accuracy > 60f) return
-        if (System.currentTimeMillis() - location.time > 15000L) return
+        val now = System.currentTimeMillis()
+        // Permit a 100 m network-provider fix only after a recent GPS gap.
+        // This bridges brief satellite losses without loosening normal GPS filtering.
+        val networkFallback = location.provider == LocationManager.NETWORK_PROVIDER &&
+            (lastFixAt == 0L || now - lastFixAt > 10000L)
+        val maxAccuracy = if (networkFallback) 100f else 60f
+        if (location.hasAccuracy() && location.accuracy > maxAccuracy) return
+        if (now - location.time > 15000L) return
         val previous = previousAcceptedLocation
         if (previous != null) {
             // Discard duplicate or older fixes delivered by parallel providers.

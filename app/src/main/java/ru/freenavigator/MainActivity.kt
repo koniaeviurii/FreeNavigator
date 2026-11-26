@@ -1812,8 +1812,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
 
     private fun updateNavigation(location: Location) {
         if (!navigationActive) return
-        if (location.hasAccuracy() && location.accuracy > 60f) return
-        if (System.currentTimeMillis() - location.time > 15000L) return
+        val now = System.currentTimeMillis()
+        // When satellite GPS drops out, allow a moderately accurate network fix
+        // to bridge the gap; keep the stricter threshold for all other providers.
+        val networkFallback = location.provider == LocationManager.NETWORK_PROVIDER &&
+            (lastAcceptedFix == null || now - lastAcceptedFixTime > 10000L)
+        val maxAccuracy = if (networkFallback) 100f else 60f
+        if (location.hasAccuracy() && location.accuracy > maxAccuracy) return
+        if (now - location.time > 15000L) return
         val previousFix = lastAcceptedFix
         if (previousFix != null) {
             // Ignore duplicate/out-of-order fixes from multiple Android providers.
