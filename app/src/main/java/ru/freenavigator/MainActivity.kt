@@ -303,8 +303,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTextColor(0xFF52677C.toInt())
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            contentDescription = "Закрыть поиск"
-            setOnClickListener { hideSearch() }
+            contentDescription = "Очистить поиск"
+            setOnClickListener {
+                if (searchInput.text.isNotEmpty()) {
+                    searchInput.text.clear()
+                    searchInput.requestFocus()
+                } else {
+                    hideSearch()
+                }
+            }
         }
         searchPanel.addView(searchInput, LinearLayout.LayoutParams(0, dp(46), 1f))
         searchPanel.addView(closeSearch, LinearLayout.LayoutParams(dp(42), dp(44)))
