@@ -282,14 +282,14 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                     selected.directionKnown -> " · направление учтено"
                     else -> ""
                 }
-                postRadarAlert(distanceText + directionText)
+                postRadarAlert(distanceText + directionText, selected.stage)
             }
         } catch (_: Exception) {
             // A malformed cache must not interrupt route guidance.
         }
     }
 
-    private fun postRadarAlert(message: String) {
+    private fun postRadarAlert(message: String, stage: Int) {
         try {
             val manager = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -305,7 +305,11 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
                 .setAutoCancel(true)
                 .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
                 .build()
-            manager.notify(RADAR_NOTIFICATION_ID, notification)
+            // Different IDs make Android treat each closer warning as a new alert.
+            for (previousStage in 1..3) {
+                if (previousStage != stage) manager.cancel(RADAR_NOTIFICATION_ID + previousStage)
+            }
+            manager.notify(RADAR_NOTIFICATION_ID + stage, notification)
         } catch (_: Exception) { }
     }
 
