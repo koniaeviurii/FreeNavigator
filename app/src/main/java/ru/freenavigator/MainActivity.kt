@@ -1036,7 +1036,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         if (tileEstimate <= 0L || tileEstimate > 15000L) {
             infoDialog(
                 "Область слишком большая",
-                "Сейчас расчётная загрузка — около $tileEstimate картографических плиток. Увеличьте масштаб карты до нужного города или района и повторите. Лимит одной загрузки — 3 000 плиток и 50 МБ."
+                "Сейчас расчётная загрузка — около $tileEstimate картографических плиток. Увеличьте масштаб карты до нужного города или района и повторите. Лимит одной загрузки — 15 000 плиток и 200 МБ."
             )
             return
         }
@@ -1189,12 +1189,12 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                                     region.setObserver(object : OfflineRegion.OfflineRegionObserver {
                                         override fun onStatusChanged(next: OfflineRegionStatus) {
                                             val mb = next.completedResourceSize / (1024L * 1024L)
-                                            if (next.completedTileCount > 3000L) {
+                                            if (next.completedTileCount > 15000L) {
                                                 region.setDownloadState(OfflineRegion.STATE_INACTIVE)
-                                                toast("Загрузка остановлена на лимите 3 000 плиток")
-                                            } else if (next.completedResourceSize > 50L * 1024L * 1024L) {
+                                                toast("Загрузка остановлена на лимите 15 000 плиток")
+                                            } else if (next.completedResourceSize > 200L * 1024L * 1024L) {
                                                 region.setDownloadState(OfflineRegion.STATE_INACTIVE)
-                                                toast("Загрузка остановлена на лимите 50 МБ")
+                                                toast("Загрузка остановлена на лимите 200 МБ")
                                             } else if (next.isComplete) {
                                                 region.setDownloadState(OfflineRegion.STATE_INACTIVE)
                                                 toast("Офлайн-карта готова · $mb МБ")
