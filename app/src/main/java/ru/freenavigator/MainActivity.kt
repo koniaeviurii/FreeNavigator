@@ -2212,9 +2212,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     /** Copies the bundled Russia camera snapshot into local storage on first launch. */
     private fun seedBundledRadarDatabase() {
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
-        // Older app versions stored only a small GPS-centred fragment. Install the
-        // national baseline once even when such a partial cache already exists.
-        if (!prefs.getString("radar_source_date", null).isNullOrBlank()) return
+        // Use a dedicated migration marker: older releases also wrote radar_source_date
+        // for a small GPS-centred fragment, which must not block installation of the
+        // bundled nationwide baseline.
+        if (prefs.getString("radar_bundled_snapshot", null) == "ru-2026-09-21-v1") return
         try {
             val bundled = assets.open("radar/ru-all.csv").use { RadarCsvParser.parse(it) }
             if (bundled.length() < 1000) throw IllegalStateException("Встроенная база камер неполная")
@@ -2237,6 +2238,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             prefs.edit()
                 .putString("radar_cache", combined.toString())
                 .putString("radar_source_date", "21.09.2026")
+                .putString("radar_bundled_snapshot", "ru-2026-09-21-v1")
                 .putString("radar_last_result", "Предустановленная база России: ${bundled.length()} камер, OpenStreetMap")
                 .apply()
             android.util.Log.i("FreeNavigator", "Bundled Russia radar database installed: ${bundled.length()} cameras")
