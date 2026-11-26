@@ -13,6 +13,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Intent
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -116,6 +118,12 @@ class MainActivity : AppCompatActivity() {
     private var navigationActive = false
     private var navigationOffline = false
     private var foregroundGuidanceStarted = false
+    private val guidanceStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!navigationActive) return
+            foregroundGuidanceStarted = intent?.getBooleanExtra(NavigationForegroundService.EXTRA_TTS_READY, false) ?: false
+        }
+    }
     private var navigationLocationListener: LocationListener? = null
     private var navigationSource: GeoJsonSource? = null
     private var navigationPoints: List<Point> = emptyList()
@@ -196,6 +204,11 @@ class MainActivity : AppCompatActivity() {
         MapLibre.getInstance(this)
         configureMapNetworking()
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this, guidanceStatusReceiver,
+            IntentFilter(NavigationForegroundService.ACTION_TTS_STATUS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -2314,6 +2327,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
             } catch (_: Exception) { }
             navigationLocationListener = null
         } else stopNavigation()
+        try { unregisterReceiver(guidanceStatusReceiver) } catch (_: Exception) { }
         speech?.stop(); speech?.shutdown(); screenScope.cancel(); mapView.onDestroy(); super.onDestroy()
     }
 

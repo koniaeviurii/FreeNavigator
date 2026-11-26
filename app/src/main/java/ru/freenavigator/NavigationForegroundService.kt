@@ -111,6 +111,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         nextStep = 0
         arrived = false
         pendingSpeech.clear()
+        if (ttsReady) reportTtsStatus(true)
         startForeground(NOTIFICATION_ID, buildNotification("Ведение по маршруту активно"))
         try {
             val fine = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -330,6 +331,7 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
 
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
+            reportTtsStatus(false)
             if (arrived) stopSelf()
             return
         }
@@ -337,9 +339,11 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         ttsReady = languageStatus != TextToSpeech.LANG_MISSING_DATA &&
             languageStatus != TextToSpeech.LANG_NOT_SUPPORTED
         if (!ttsReady) {
+            reportTtsStatus(false)
             if (arrived) stopSelf()
             return
         }
+        reportTtsStatus(true)
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onDone(utteranceId: String?) {
@@ -357,6 +361,10 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
             val item = pendingSpeech.removeFirst()
             tts?.speak(item.text, TextToSpeech.QUEUE_ADD, null, item.utteranceId)
         }
+    }
+
+    private fun reportTtsStatus(ready: Boolean) {
+        sendBroadcast(Intent(ACTION_TTS_STATUS).setPackage(packageName).putExtra(EXTRA_TTS_READY, ready))
     }
 
     private fun buildNotification(text: String): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -443,6 +451,8 @@ class NavigationForegroundService : Service(), LocationListener, TextToSpeech.On
         private const val RADAR_NOTIFICATION_ID = 4202
         const val ACTION_START = "ru.freenavigator.action.START_NAVIGATION"
         const val ACTION_STOP = "ru.freenavigator.action.STOP_NAVIGATION"
+        const val ACTION_TTS_STATUS = "ru.freenavigator.action.TTS_STATUS"
+        const val EXTRA_TTS_READY = "tts_ready"
         const val EXTRA_DEST_LAT = "destination_lat"
         const val EXTRA_DEST_LON = "destination_lon"
         const val EXTRA_STEP_LATS = "step_latitudes"
