@@ -235,6 +235,7 @@ class MainActivity : AppCompatActivity() {
         }
         radarEnabled = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
             .getBoolean("radar_enabled", true)
+        seedBundledRadarDatabase()
         // Clear obsolete optional traffic settings; live traffic is postponed.
         getSharedPreferences("free_navigator_settings", MODE_PRIVATE).edit()
             .remove("tomtom_api_key").remove("traffic_enabled").apply()
@@ -2188,9 +2189,36 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     }
 
     private fun radarStatusText(): String {
-        val updated = getSharedPreferences("free_navigator_settings", MODE_PRIVATE).getLong("radar_updated_at", 0L)
-        val date = if (updated > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated)) else "ещё не загружена"
+        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+        val updated = prefs.getLong("radar_updated_at", 0L)
+        val sourceDate = prefs.getString("radar_source_date", null)
+        val date = if (updated > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated))
+        } else if (!sourceDate.isNullOrBlank()) {
+            "предустановлена · данные от $sourceDate"
+        } else "ещё не загружена"
         return (if (radarEnabled) "Включён" else "Выключен") + " · база: $date"
+    }
+
+    /** Copies the bundled Russia camera snapshot into local storage on first launch. */
+    private fun seedBundledRadarDatabase() {
+        val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
+        val existingCount = try {
+            org.json.JSONArray(prefs.getString("radar_cache", "[]")).length()
+        } catch (_: Exception) { 0 }
+        if (existingCount > 0) return
+        try {
+            val cameras = assets.open("radar/ru-all.csv").use { RadarCsvParser.parse(it) }
+            if (cameras.length() < 1000) throw IllegalStateException("Встроенная база камер неполная")
+            prefs.edit()
+                .putString("radar_cache", cameras.toString())
+                .putString("radar_source_date", "21.09.2026")
+                .putString("radar_last_result", "Предустановленная база России: ${cameras.length()} камер, OpenStreetMap")
+                .apply()
+            android.util.Log.i("FreeNavigator", "Bundled Russia radar database installed: ${cameras.length()} cameras")
+        } catch (error: Exception) {
+            android.util.Log.e("FreeNavigator", "Bundled radar database is unavailable", error)
+        }
     }
 
     private fun radarDatabaseStatus(): String {
@@ -2202,7 +2230,9 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         val prefs = getSharedPreferences("free_navigator_settings", MODE_PRIVATE)
         val count = try { org.json.JSONArray(prefs.getString("radar_cache", "[]")).length() } catch (_: Exception) { 0 }
         val updated = prefs.getLong("radar_updated_at", 0L)
-        val date = if (updated > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated)) else "нет"
+        val sourceDate = prefs.getString("radar_source_date", null)
+        val date = if (updated > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(updated))
+            else if (!sourceDate.isNullOrBlank()) "предустановлена · данные от $sourceDate" else "нет"
         val error = prefs.getString("radar_last_error", null)
         val lastResult = prefs.getString("radar_last_result", null)
         val details = if (!error.isNullOrBlank()) "\nОшибка последней загрузки: $error" else if (!lastResult.isNullOrBlank()) "\nПоследний результат: $lastResult" else ""

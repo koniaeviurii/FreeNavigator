@@ -13,7 +13,23 @@ import org.json.JSONObject
 
 /** Downloads fixed speed-camera objects from Overpass and merges them into the persistent local cache. */
 class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    private fun downloadNationalDatabase(): org.json.JSONArray {
+        val connection = (URL("https://speedcams.world/downloads/ru/ru-all.csv").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20000
+            readTimeout = 90000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android navigation app; OSM camera data)")
+            setRequestProperty("Accept", "text/csv")
+        }
+        try {
+            if (connection.responseCode !in 200..299) throw java.io.IOException("Camera database HTTP ${connection.responseCode}")
+            return connection.inputStream.use { RadarCsvParser.parse(it) }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    override suspend fun doWork() {
         val prefs = applicationContext.getSharedPreferences("free_navigator_settings", Context.MODE_PRIVATE)
         fun fail(reason: String): Result {
             prefs.edit().putString("radar_last_error", reason).apply()
@@ -30,7 +46,25 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         if (!lat.isFinite() || !lon.isFinite() || (lat == 0.0 && lon == 0.0) || lat !in -90.0..90.0 || lon !in -180.0..180.0)
             return fail("Не получены корректные координаты GPS")
 
-        // nwr includes nodes, ways and relations; center supplies coordinates for mapped ways.
+        // Prefer a complete country snapshot over a GPS-centred fragment. The CSV is
+        // bundled in the APK and refreshed from its public source on explicit/daily updates.
+        val national = try { downloadNationalDatabase() } catch (error: Exception) {
+            android.util.Log.w("FreeNavigator", "National radar refresh failed; falling back to nearby OSM", error)
+            null
+        }
+        if (national != null && national.length() >= 1000) {
+            prefs.edit()
+                .putString("radar_cache", national.toString())
+                .putLong("radar_updated_at", System.currentTimeMillis())
+                .putString("radar_source_date", "21.09.2026")
+                .remove("radar_last_error")
+                .putString("radar_last_result", "Обновлена база России: ${national.length()} камер · OpenStreetMap")
+                .apply()
+            return Result.success()
+        }
+
+        // Fallback: if the national download is temporarily unavailable, refresh
+        // the 30 km area around the current location without discarding the cache.
         val query = "[out:json][timeout:50];(nwr(around:30000,$lat,$lon)[highway=speed_camera];nwr(around:30000,$lat,$lon)[enforcement=maxspeed];);out center;"
         val endpoints = listOf(
             "https://overpass-api.de/api/interpreter",
@@ -115,7 +149,7 @@ class RadarUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 if (id.isNotBlank()) merged[id] = camera
             }
             val combined = org.json.JSONArray()
-            merged.values.toList().takeLast(10000).forEach { combined.put(it) }
+            merged.values.toList().takeLast(20000).forEach { combined.put(it) }
             prefs.edit()
                 .putString("radar_cache", combined.toString())
                 .putLong("radar_updated_at", System.currentTimeMillis())

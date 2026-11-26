@@ -42,6 +42,26 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
+      - name: Download bundled Russia camera database
+        run: |
+          mkdir -p app/src/main/assets/radar
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+            -A "FreeNavigator/0.6.0 (Android navigation app; OSM camera data)" \
+            https://speedcams.world/downloads/ru/ru-all.csv \
+            -o app/src/main/assets/radar/ru-all.csv
+          test "$(wc -c < app/src/main/assets/radar/ru-all.csv)" -gt 100000
+          test "$(wc -c < app/src/main/assets/radar/ru-all.csv)" -lt 20000000
+          head -n 1 app/src/main/assets/radar/ru-all.csv | grep -q '^id,latitude,longitude,name,type,maxspeed,unit,country_code,source'
+          test "$(wc -l < app/src/main/assets/radar/ru-all.csv)" -gt 5000
+          cat > app/src/main/assets/radar/ATTRIBUTION.txt <<'EOF'
+          Camera coordinates: © OpenStreetMap contributors
+          Source: https://speedcams.world/download/russia
+          Snapshot date: 21 September 2026
+          Licence: Open Database Licence (ODbL) 1.0
+          Reuse requires attribution and sharing adaptations under ODbL 1.0.
+          This community-mapped dataset may be incomplete or out of date.
+          EOF
+
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
 
