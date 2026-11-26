@@ -446,7 +446,18 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFF173B5E.toInt())
         }
         navigationInfo = navInfo
-        navTopRow.addView(navInfo, LinearLayout.LayoutParams(0, -2, 1f))
+        navTopRow.addView(navInfo, LinearLayout.LayoutParams(-1, -2))
+        navPanel.addView(navTopRow)
+        val progressRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        routeProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000; progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFF1769AA.toInt())
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0xFFDCE7F1.toInt())
+        }
+        progressRow.addView(routeProgress, LinearLayout.LayoutParams(0, dp(5), 1f))
         val stopNavigation = TextView(this).apply {
             text = "✕"
             textSize = 24f
@@ -456,14 +467,10 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Завершить маршрут"
             setOnClickListener { stopNavigation() }
         }
-        navTopRow.addView(stopNavigation, LinearLayout.LayoutParams(dp(44), dp(40)))
-        navPanel.addView(navTopRow)
-        routeProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 1000; progress = 0
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFF1769AA.toInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0xFFDCE7F1.toInt())
-        }
-        navPanel.addView(routeProgress, LinearLayout.LayoutParams(-1, dp(5)).apply {
+        progressRow.addView(stopNavigation, LinearLayout.LayoutParams(dp(44), dp(40)).apply {
+            leftMargin = dp(8)
+        })
+        navPanel.addView(progressRow, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(8); bottomMargin = dp(5)
         })
         val timesRow = LinearLayout(this).apply {
