@@ -1863,16 +1863,14 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         routeArrivalTime?.text = arrival
         val bearing = if (location.hasBearing() && location.speed > 0.5f) location.bearing.toDouble()
             else lastNavigationLocation?.let { it.bearingTo(location).toDouble() } ?: map?.cameraPosition?.bearing ?: 0.0
-        val bottomPadding = (navigationPanel?.height?.takeIf { it > 0 } ?: dp(116)) + dp(28)
         map?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
             CameraPosition.Builder()
                 .target(LatLng(location.latitude, location.longitude))
                 .zoom(17.0)
                 .bearing(bearing)
                 .tilt(45.0)
-                // Shift the map's logical center above the bottom route panel so
-                // the live vehicle arrow remains visible in the usable map area.
-                .padding(0.0, 0.0, 0.0, bottomPadding.toDouble())
+                // Keep the live vehicle marker at the exact visual center of the map.
+                .padding(0.0, 0.0, 0.0, 0.0)
                 .build()
         ))
         lastNavigationLocation = Location(location)
