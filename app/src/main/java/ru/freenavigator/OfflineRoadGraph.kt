@@ -86,7 +86,7 @@ class OfflineRoadGraph(context: Context) : SQLiteOpenHelper(context, DB_NAME, nu
                 }
             }
         }
-        require(parsed.size >= 20) { "В выбранной области найдено слишком мало пригодных дорог" }
+        require(parsed.isNotEmpty()) { "В выбранном участке не найдено пригодных дорог" }
         val db = writableDatabase
         db.beginTransaction()
         try {
