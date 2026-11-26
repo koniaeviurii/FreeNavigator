@@ -48,7 +48,7 @@ class OfflineTerritoryDataWorker(
 
             if (!roadDone) {
                 try {
-                    val query = "[out:json][timeout:90];way($s,$w,$n,$e)[highway~\\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\\"];out geom;"
+                    val query = "[out:json][timeout:90];way($s,$w,$n,$e)[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
                     val response = requestOverpass(query)
                     val elements = JSONObject(response).optJSONArray("elements")
                         ?: throw IllegalStateException("Overpass: нет списка дорог")
