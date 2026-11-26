@@ -553,7 +553,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         }
         panel.addView(scrollView, LinearLayout.LayoutParams(-1, 0, 1f))
         val version = TextView(this).apply {
-            text = "FreeNavigator · версия 0.5.11"
+            text = "FreeNavigator · версия 0.5.12"
             textSize = 11f
             setTextColor(0xFF91A0B1.toInt())
             setPadding(dp(22), dp(12), dp(16), dp(12))
@@ -1434,6 +1434,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         routeRemainingText?.text = "До конца маршрута: ${String.format(Locale.getDefault(), "%.1f", distanceMeters / 1000.0)} км"
         speak("Маршрут начат")
         navigationPanel?.visibility = View.VISIBLE
+        // Keep the vehicle marker in the visible map area above the route panel.
+        navigationPanel?.post {
+            if (navigationActive) map?.setPadding(0, 0, 0, (navigationPanel?.height ?: 0) + dp(24))
+        }
         maneuverHud?.visibility = View.VISIBLE
         maneuverHudIcon?.text = "↑"
         maneuverHudText?.text = "Определяем следующий манёвр…"
@@ -1718,6 +1722,7 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
         } catch (_: Exception) {}
         navigationLocationListener = null
         navigationPanel?.visibility = View.GONE
+        map?.setPadding(0, 0, 0, 0)
         maneuverHud?.visibility = View.GONE
         bottomControlsView?.visibility = View.VISIBLE
         map?.style?.let { style ->
