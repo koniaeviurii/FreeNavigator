@@ -874,9 +874,10 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
     private fun downloadTerritoryRoadsAndPlaces(bounds: LatLngBounds, territoryName: String) {
         statusText.text = "Подготовка дорожных данных и офлайн-поиска…"
         screenScope.launch {
-            var roadSegments = 0
+            var roadEdges = 0
             var placeCount = 0
-            var failedCells = 0
+            var failedRoadCells = 0
+            var failedPlaceCells = 0
             try {
                 val cells = splitOfflineBounds(bounds, 0.20)
                 withContext(Dispatchers.IO) {
@@ -885,56 +886,83 @@ drawerItem(content, "⏻", "Выход", "Закрыть навигатор") { 
                         val west = cell.longitudeWest
                         val north = cell.latitudeNorth
                         val east = cell.longitudeEast
-                        try {
-                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\"];out geom;"
-                            val roadJson = requestTerritoryOverpass(roadQuery)
-                            val importedRoads = runCatching {
-                                useOfflineRoadGraph { it.mergeFromOverpassJson(roadJson) }
-                            }.getOrDefault(0)
-                            roadSegments += importedRoads
 
+                        // Roads and places are independent datasets: a failure in one
+                        // must never prevent attempting the other for the same cell.
+                        try {
+                            val roadQuery = "[out:json][timeout:90];way($south,$west,$north,$east)[highway~\\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road)$\\"];out geom;"
+                            val roadJson = requestTerritoryOverpass(roadQuery)
+                            val imported = useOfflineRoadGraph { it.mergeFromOverpassJson(roadJson) }
+                            roadEdges += imported
+                        } catch (error: Exception) {
+                            failedRoadCells++
+                            android.util.Log.w("FreeNavigator", "Road data cell ${index + 1}/${cells.size} failed", error)
+                        }
+
+                        try {
                             val placesQuery = "[out:json][timeout:90];(nwr($south,$west,$north,$east)[name];nwr($south,$west,$north,$east)[addr:housenumber];);out center;"
                             val placesJson = requestTerritoryOverpass(placesQuery)
                             placeCount += mergeTerritoryPlaces(placesJson)
                         } catch (error: Exception) {
-                            failedCells++
-                            android.util.Log.w("FreeNavigator", "Offline territory cell ${index + 1}/${cells.size} failed", error)
+                            failedPlaceCells++
+                            android.util.Log.w("FreeNavigator", "Place data cell ${index + 1}/${cells.size} failed", error)
                         }
+
                         val completed = index + 1
                         statusText.post {
-                            statusText.text = "${territoryName}: данные ${completed}/${cells.size} участков · дорог $roadSegments · мест $placeCount"
+                            statusText.text = "${territoryName}: ${completed}/${cells.size} участков · дорог $roadEdges · мест $placeCount"
                         }
-                        // Be courteous to public Overpass instances.
+                        // A small delay between requests respects public Overpass capacity.
                         Thread.sleep(1100)
                     }
                 }
+                val allFailures = failedRoadCells + failedPlaceCells
                 val resultText = when {
-                    failedCells == 0 -> "Офлайн-данные ${territoryName} загружены"
-                    failedCells == cells.size -> "Не удалось загрузить офлайн-данные ${territoryName}"
+                    allFailures == 0 -> "Офлайн-данные ${territoryName} загружены"
+                    failedRoadCells == cells.size && failedPlaceCells == cells.size ->
+                        "Не удалось загрузить офлайн-данные ${territoryName}"
                     else -> "Офлайн-данные ${territoryName} загружены частично"
                 }
                 statusText.text = resultText
-                val retryHint = if (failedCells > 0) " Повторите загрузку, чтобы попробовать получить пропущенные участки." else ""
-                toast("${resultText}. Дорожных сегментов добавлено: $roadSegments; объектов поиска: $placeCount; участков с ошибками: $failedCells.$retryHint")
+                val retryHint = if (allFailures > 0) " Повторите загрузку, чтобы попробовать получить пропущенные участки." else ""
+                toast("${resultText}. Дорожных сегментов: $roadEdges; объектов поиска: $placeCount; ошибок дорог: $failedRoadCells; ошибок мест: $failedPlaceCells.$retryHint")
             } catch (error: Exception) {
                 statusText.text = "Загрузка офлайн-данных прервана"
-                toast("Не удалось завершить загрузку ${territoryName}: ${error.message ?: "ошибка сети"}. Уже сохранённые участки останутся в телефоне.")
+                toast("Загрузка ${territoryName} прервана: ${error.message ?: "ошибка сети"}. Уже сохранённые участки останутся в телефоне.")
             }
         }
     }
 
     private fun requestTerritoryOverpass(query: String): String {
-        val encoded = URLEncoder.encode(query, "UTF-8")
         val endpoints = listOf(
-            "https://overpass-api.de/api/interpreter?data=",
-            "https://overpass.kumi.systems/api/interpreter?data="
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter"
         )
         var lastError: Exception? = null
         for (endpoint in endpoints) {
+            var connection: HttpURLConnection? = null
             try {
-                return httpGetLong(endpoint + encoded)
+                connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20000
+                    readTimeout = 120000
+                    requestMethod = "POST"
+                    doOutput = true
+                    setRequestProperty("User-Agent", "FreeNavigator/0.6.0 (Android offline maps; OpenStreetMap data)")
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+                }
+                val payload = "data=" + URLEncoder.encode(query, "UTF-8")
+                connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw java.io.IOException("Overpass HTTP $code: ${body.take(160)}")
+                if (body.isBlank()) throw java.io.IOException("Overpass вернул пустой ответ")
+                return body
             } catch (error: Exception) {
                 lastError = error
+            } finally {
+                connection?.disconnect()
             }
         }
         throw lastError ?: IllegalStateException("Серверы OpenStreetMap недоступны")
