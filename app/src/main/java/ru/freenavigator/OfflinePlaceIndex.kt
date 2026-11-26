@@ -41,7 +41,12 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
     }
 
     /** Replaces the active local region atomically; a bad file leaves the previous index intact. */
-    fun replaceFromGeoJson(input: InputStream): Int {
+    fun replaceFromGeoJson(input: InputStream): Int = importFromGeoJson(input, true)
+
+    /** Adds or updates imported places without deleting previously saved territories. */
+    fun mergeFromGeoJson(input: InputStream): Int = importFromGeoJson(input, false)
+
+    private fun importFromGeoJson(input: InputStream, replaceExisting: Boolean): Int {
         val root = JSONObject(input.bufferedReader(Charsets.UTF_8).use { it.readText() })
         require(root.optString("type") == "FeatureCollection") {
             "Ожидается GeoJSON FeatureCollection"
@@ -76,7 +81,7 @@ class OfflinePlaceIndex(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete(TABLE, null, null)
+            if (replaceExisting) db.delete(TABLE, null, null)
             parsed.forEach { place ->
                 val values = ContentValues().apply {
                     put("id", place.id)
